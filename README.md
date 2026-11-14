@@ -7,8 +7,20 @@ Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi (4 kişi, teslim: 3
 - Kanıt varsa (kapı / yemekhane kaydı) kendisi düzeltir, yoksa sabah amire sorar.
 - Ham kayda dokunmaz; her düzeltme kim / ne zaman / eski-yeni / gerekçe ile silinemeyen tabloda tutulur.
 - Ay sonunda bordroya hazır puantaj çıkarır.
-- Çalışan kiosktan son 2 haftasını görüp itiraz edebilir.
+- Çalışan itirazını İK'ya iletir (sözlü / dilekçe / e-posta); İK itirazı sisteme kaydeder ve sonuçlandırır.
 - Çalışan aleyhine kararı sistem vermez, İK verir. Ücret hesaplamaz.
+
+## Ekranlar
+- **Amir:** gece işinin kanıt bulamadığı kayıtları sabah görür; öneriyi onaylar, saati düzeltir ya da İK'ya gönderir.
+- **İK:** amirin gönderdiği kayıtlara karar verir, çalışan itirazlarını kaydeder ve sonuçlandırır, denetim kaydını görür.
+
+Çalıştırmak için:
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run web/app.py
+```
 
 ## Teknoloji
 - SQL Server Express
