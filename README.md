@@ -11,7 +11,7 @@ Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi (4 kişi, teslim: 3
 - Çalışan aleyhine kararı sistem vermez, İK verir. Ücret hesaplamaz.
 
 ## Teknoloji
-- SQL Server Express
+- Supabase (PostgreSQL). Şema: `supabase/migrations`, açıklama: [docs/veritabani.md](docs/veritabani.md)
 - Python + Streamlit
 - Gece işi: Python betiği (Windows Görev Zamanlayıcı)
 - Veri: sentetik (≈100 sahte çalışan, 1–2 ay)
@@ -20,4 +20,4 @@ Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi (4 kişi, teslim: 3
 - `main` korumalıdır; doğrudan push yapılmaz.
 - Her iş için dal: `feature/<issue-no>-kisa-ad`
 - Her PR en az 1 onay alır.
-- Gizli bilgiler (şifre, bağlantı dizesi) koda yazılmaz; `.env` dosyasında tutulur.
+- Gizli bilgiler (şifre, bağlantı dizesi) koda yazılmaz; `.env` dosyasında tutulur (örnek: `.env.example`).
