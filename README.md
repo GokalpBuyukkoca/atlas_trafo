@@ -20,7 +20,4 @@ Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi (4 kişi, teslim: 3
 - `main` korumalıdır; doğrudan push yapılmaz.
 - Her iş için dal: `feature/<issue-no>-kisa-ad`
 - Her PR en az 1 onay alır.
-- PR'leri `main`'e yalnızca team leader birleştirir (merge). Bu, GitHub'daki bir kuralla (ruleset) zorunludur.
-- PR kapatma / yeniden açma, etiket ve atama işlemlerini yalnızca team leader yapar. Başkası yaparsa
-  `.github/workflows/pr-yetki-korumasi.yml` işlemi otomatik geri alır ve PR'e not düşer.
 - Gizli bilgiler (şifre, bağlantı dizesi) koda yazılmaz; `.env` dosyasında tutulur.
