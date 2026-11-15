@@ -1,0 +1,67 @@
+# PR'lerde kapatma / yeniden açma, etiket ve atama işlemleri yalnızca team leader'a aittir.
+# Depo sahibi dışında biri bunları yaparsa bu iş akışı işlemi otomatik geri alır.
+#
+# Not: pull_request_target kullanılır; PR'deki kod çalıştırılmaz (checkout yok),
+# bu yüzden fork'tan gelen PR'lerde de güvenlidir. GITHUB_TOKEN ile yapılan geri alma
+# yeni bir iş akışı tetiklemez, döngü oluşmaz.
+name: PR yetki koruması
+
+on:
+  pull_request_target:
+    types: [closed, reopened, labeled, unlabeled, assigned, unassigned]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  geri-al:
+    # Team leader = depo sahibi. İşlemi o yaptıysa hiçbir şey yapılmaz.
+    if: github.event.sender.login != github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const kisi = context.payload.sender.login;
+            const lider = context.payload.repository.owner.login;
+            const no = pr.number;
+            let yapilan = null;
+
+            switch (context.payload.action) {
+              case 'closed':
+                // Merge yalnızca admin'e açık (ruleset); yine de birleşmiş PR'e dokunma.
+                if (pr.merged) return;
+                await github.rest.pulls.update({ owner, repo, pull_number: no, state: 'open' });
+                yapilan = 'PR kapatıldı, yeniden açıldı';
+                break;
+              case 'reopened':
+                await github.rest.pulls.update({ owner, repo, pull_number: no, state: 'closed' });
+                yapilan = 'PR yeniden açıldı, tekrar kapatıldı';
+                break;
+              case 'labeled':
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: no, name: context.payload.label.name });
+                yapilan = `"${context.payload.label.name}" etiketi eklendi, kaldırıldı`;
+                break;
+              case 'unlabeled':
+                await github.rest.issues.addLabels({ owner, repo, issue_number: no, labels: [context.payload.label.name] });
+                yapilan = `"${context.payload.label.name}" etiketi kaldırıldı, geri eklendi`;
+                break;
+              case 'assigned':
+                await github.rest.issues.removeAssignees({ owner, repo, issue_number: no, assignees: [context.payload.assignee.login] });
+                yapilan = `@${context.payload.assignee.login} ataması yapıldı, geri alındı`;
+                break;
+              case 'unassigned':
+                await github.rest.issues.addAssignees({ owner, repo, issue_number: no, assignees: [context.payload.assignee.login] });
+                yapilan = `@${context.payload.assignee.login} ataması kaldırıldı, geri eklendi`;
+                break;
+            }
+
+            if (yapilan) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: no,
+                body: `🔒 ${yapilan}. PR kapatma, etiket ve atama işlemlerini yalnızca team leader (@${lider}) yapabilir. İşlemi yapan: @${kisi}`,
+              });
+            }
