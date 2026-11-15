@@ -227,3 +227,10 @@ __marimo__/
 *.bak
 *.mdf
 *.ldf
+
+# Ortam dosyaları (örnek dosya hariç)
+.env.*
+!.env.example
+
+# Claude Code kişisel ayarları
+.claude/settings.local.json
