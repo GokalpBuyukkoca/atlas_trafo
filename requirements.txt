@@ -1,0 +1,3 @@
+# Kurulum: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+psycopg[binary]==3.2.10   # PostgreSQL (Supabase) bağlantısı
+python-dotenv==1.1.1      # .env dosyasını okur
