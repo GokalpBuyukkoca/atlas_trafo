@@ -128,24 +128,12 @@ select test.dogrula('kilitli ay düzeltmesi Aralık''a fark satırı oldu',
 select test.dogrula('kilitli aydaki kayıt değişmedi',
     (select cikis_zamani = '2026-11-13 17:02+03' from pdks.gun_kaydi where id = 1));
 
--- 5) Kiosk PIN (sorun 17) ----------------------------------------------
-select pdks.pin_sifirla(1, '1234', 2);
-select test.dogrula('ilk girişte PIN değişimi istenir', pdks.kiosk_giris('1001', '1234') = 'pin_degismeli');
-select test.dogrula('PIN değiştirildi', pdks.kiosk_pin_degistir('1001', '1234', '5678'));
-select test.dogrula('yeni PIN ile giriş', pdks.kiosk_giris('1001', '5678') = 'tamam');
-select pdks.kiosk_giris('1001', '0000') from generate_series(1, 4);
-select test.dogrula('5. hatalı denemede kilit', pdks.kiosk_giris('1001', '0000') = 'kilitli');
-select test.dogrula('kilit İK''ya uyarı olarak düştü',
-    exists (select 1 from pdks.uyari where tur = 'pin_kilitlendi' and calisan_id = 1));
-select test.dogrula('PIN açık metin olarak saklanmıyor',
-    (select pin_ozeti not like '%5678%' from pdks.calisan where id = 1));
-
--- 6) Ayar değişikliği izlenir -------------------------------------------
+-- 5) Ayar değişikliği izlenir -------------------------------------------
 update pdks.ayar set deger = 10, guncelleyen_id = 2 where anahtar = 'yurume_payi_dk';
 select test.dogrula('ayar değişikliği geçmişe yazıldı',
     exists (select 1 from pdks.ayar_gecmisi where anahtar = 'yurume_payi_dk' and eski_deger = 5 and yeni_deger = 10));
 
--- 7) API rolleri (Supabase) erişemez ------------------------------------
+-- 6) API rolleri (Supabase) erişemez ------------------------------------
 reset role;
 do $$
 begin

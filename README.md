@@ -97,6 +97,7 @@ atlas_trafo/
 | `20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri |
 | `20261114000400_varsayilan_ayarlar.sql` | Varsayılan ayarlar ve 4 vardiya |
 | `20261115000500_fazla_mesai.sql` *(PR #6)* | Yazılı onay, plan, 11 / 270 saat sınırı |
+| `20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının veritabanından kaldırılması |
 
 ---
 
@@ -117,7 +118,7 @@ streamlit run web/app.py
 
 **Veritabanı kurulumu (tek kişi, bir kez):** Supabase SQL Editor'de `supabase/migrations` altındaki dosyalar **sırayla** çalıştırılır; ardından rollere şifre verilir (bkz. `docs/veritabani.md`).
 
-**Testler:** `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/kurallar_testi.sql` — sonda "TÜM TESTLER GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz.
+**Testler:** `supabase/tests` altındaki her dosya `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f <dosya>` ile çalıştırılır; sonda "... GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz.
 
 ---
 
@@ -125,10 +126,10 @@ streamlit run web/app.py
 
 | Parça | Durum |
 |---|---|
-| Veritabanı şeması, kurallar, roller (32 test) | ✅ main |
+| Veritabanı şeması, kurallar, roller (26 test) | ✅ main |
 | Amir ve İK ekranları | ✅ main — örnek veriyle; veritabanına bağlanacak |
 | Fazla mesai (33 test) + bağlantı testi | ⏳ PR #6 |
-| Kiosk parçalarının veritabanından kaldırılması | ⬜ Yapılacak (yeni migration) |
+| Kiosk parçalarının veritabanından kaldırılması (9 test) | ✅ Bu PR |
 | Kart paylaşımı şüphe kuralı + fiili fazla mesai uyarıları | ⬜ Yapılacak (migration 0600) |
 | Geçici kart ve zimmet | ⬜ Yapılacak (migration 0700) |
 | Saatlik izin | ⬜ Yapılacak (migration 0800) |

@@ -14,8 +14,10 @@ kullanıcılarıyla doğrudan bağlanır.
 | `supabase/migrations/20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri, yetkiler |
 | `supabase/migrations/20261114000400_varsayilan_ayarlar.sql` | İK ayarlarının varsayılanları, örnek vardiyalar |
 | `supabase/migrations/20261115000500_fazla_mesai.sql` | Fazla mesai: yazılı onay, plan, 270 saat / 11 saat sınırları (+2 tablo) |
-| `supabase/tests/kurallar_testi.sql` | 32 kural testi (her şeyi geri alır, iz bırakmaz) |
+| `supabase/migrations/20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının kaldırılması (PIN alanları, kiosk fonksiyonları ve görünümü, kiosk ayarları, `pin_kilitlendi` uyarı türü) |
+| `supabase/tests/kurallar_testi.sql` | 26 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
+| `supabase/tests/kiosk_kaldirma_testi.sql` | Kiosktan hiçbir parça kalmadığını doğrulayan 9 test |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
 > **Trigger** = bir tabloya ekleme/değiştirme/silme yapılırken kendiliğinden çalışan kontrol.
@@ -103,8 +105,6 @@ erDiagram
         text ad
         text soyad
         smallint departman_id FK
-        text pin_ozeti
-        bool kilitli_mi
     }
     kart {
         bigint id PK
@@ -231,7 +231,7 @@ cur.execute(
 4. Bağlantı bilgisini **Project Settings → Database → Connection string** kısmından al.
    Pooler kullanılıyorsa kullanıcı adı `pdks_uygulama.<proje-kodu>` biçimindedir.
 5. `.env.example` dosyasını `.env` olarak kopyalayıp bilgileri doldur. `.env` zaten `.gitignore`'da.
-6. Testleri çalıştır: `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/kurallar_testi.sql`
+6. Testleri çalıştır: `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/<dosya>.sql` (her test dosyası için)
    Sonda `TÜM TESTLER GEÇTİ` görmelisin.
 
 ## Bilinçli tercihler
@@ -239,5 +239,5 @@ cur.execute(
 - Değerler için enum yerine `text + check` kullandık: okunması ve yeni değer eklemesi daha kolay.
 - `vardiya_plani` ve `izin` değiştirilebilir; bunların etkisi `gun_kaydi`'na yine `duzeltme` üzerinden yansır.
 - Uygulama girişi (amir/İK) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre. Supabase Auth kullanılmıyor.
-- **Kiosk projeden çıkarıldı.** 0100–0200'deki kiosk parçaları (`calisan.pin_ozeti`, `kilitli_mi`, `kiosk_giris()`, `kiosk_pin_degistir()`, `pin_sifirla()`, `v_kiosk_kayitlar`, PIN ayarları) yeni bir migration ile kaldırılacak; mevcut migration dosyaları değiştirilmez.
+- **Kiosk yok.** Kiosk için eklenen parçalar `20261117010000_kiosk_kaldir.sql` ile kaldırıldı. `ayar_gecmisi`'ndeki eski kiosk ayarı kayıtları silinemez iz olduğu için yerinde durur.
 - Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak Python'un işi; veritabanı yalnızca kuralları korur.
