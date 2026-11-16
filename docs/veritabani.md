@@ -15,9 +15,12 @@ kullanıcılarıyla doğrudan bağlanır.
 | `supabase/migrations/20261114000400_varsayilan_ayarlar.sql` | İK ayarlarının varsayılanları, örnek vardiyalar |
 | `supabase/migrations/20261115000500_fazla_mesai.sql` | Fazla mesai: yazılı onay, plan, 270 saat / 11 saat sınırları (+2 tablo) |
 | `supabase/migrations/20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının kaldırılması (PIN alanları, kiosk fonksiyonları ve görünümü, kiosk ayarları, `pin_kilitlendi` uyarı türü) |
+| `supabase/migrations/20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, `guvenlik` rolü, geçici kart uyarıları, `okutma_sahibi()` |
+| `supabase/migrations/20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı (`kart_paylasim_kontrol()`) |
 | `supabase/tests/kurallar_testi.sql` | 26 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/kiosk_kaldirma_testi.sql` | Kiosktan hiçbir parça kalmadığını doğrulayan 9 test |
+| `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart ve kart paylaşımı için 34 test |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
 > **Trigger** = bir tabloya ekleme/değiştirme/silme yapılırken kendiliğinden çalışan kontrol.
@@ -50,7 +53,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 1 Giriş okutmama | `kanit_kaydi` + `duzeltme`; kanıt vardiya başından sonraysa saat yazılmaz, `amir_sorusu` (`kanit_vardiya_sonrasi`). Yürüme payı: `ayar.yurume_payi_dk` |
 | 2 Çıkış okutmama | Kanıttaki çıkış saati yazılır (vardiya sonu değil); yoksa `amir_sorusu` (`cikis_yok`) |
 | 3 Mükerrer okutma | `okutma_isareti` (`mukerrer`), eşik `ayar.mukerrer_esik_dk` |
-| 4 Kart unutma/kaybetme | Güvenlikten zimmetli **geçici kart** (tablolar migration 0700'de eklenecek); geçici kart yoksa `amir_sorusu.cevap = 'kart_unuttu'`. Kayıp kart: `kart.durum = 'iptal'`, iptal kartla okutma → `uyari` |
+| 4 Kart unutma/kaybetme | Güvenlikten zimmetli **geçici kart**: `gecici_kart`, `gecici_kart_zimmet` (iade edilmemiş kart başkasına verilemez, çalışanda aynı anda tek geçici kart, zimmet silinemez). Okutmanın sahibi `okutma_sahibi()` ile bulunur; amire soru gitmez. Geçici kart yoksa `amir_sorusu.cevap = 'kart_unuttu'`. Uyarılar: `gecici_kart_cakisma`, `gecici_kart_zimmetsiz`, `gecici_kart_iade_edilmedi`, `sik_kart_unutma` (`gecici_kart_kontrol()`). Kayıp kart: `kart.durum = 'iptal'` |
 | 5 Okuyucu arızası | `okuyucu`, `ariza` (manuel ya da `otomatik_suphe`), `duzeltme.ariza_id` |
 | 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün; pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
 | 8 Vardiya değişikliği (basit) | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu` |
@@ -60,7 +63,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 13 Ay sonu yığılması | `amir_sorusu.son_cevap_tarihi`, `eskale_*`, `kullanici.ust_amir_id`, `departman.vekil_amir_id`, `gece_isi` + `v_gece_isi_durumu` |
 | 14 İzin/rapor (basit) | `izin`; amir `v_izin_amir` görünümünden yalnızca "izinli" görür |
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
-| 6 Kart paylaşımı | Tekrar eden ardışık okutma kuralı ve uyarı türü (migration 0600'de eklenecek); karar İK'da |
+| 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
 | 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
 | 15 Bordro aktarımı | `puantaj_satiri`; CSV'yi Python üretir |
 | 17 Çalışan kendi kaydını göremiyor | **Kiosk yok.** Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
@@ -73,6 +76,9 @@ erDiagram
     kullanici ||--o{ departman : "amiri / vekili"
     kullanici ||--o{ kullanici : "üst amir"
     calisan ||--o{ kart : "sahibi"
+    gecici_kart ||--o{ gecici_kart_zimmet : "zimmetleri"
+    calisan ||--o{ gecici_kart_zimmet : "aldığı geçici kartlar"
+    kullanici ||--o{ gecici_kart_zimmet : "veren / iade alan"
     calisan ||--o{ vardiya_plani : "planı"
     vardiya_tanim ||--o{ vardiya_plani : ""
     calisan ||--o{ izin : ""
@@ -111,6 +117,20 @@ erDiagram
         text kart_no UK
         bigint calisan_id FK
         text durum "aktif / iptal"
+    }
+    gecici_kart {
+        bigint id PK
+        text kart_no UK
+        text durum "aktif / kayip / iptal"
+    }
+    gecici_kart_zimmet {
+        bigint id PK "SİLİNEMEZ"
+        bigint gecici_kart_id FK
+        bigint calisan_id FK
+        timestamptz verilis_zamani
+        bigint veren_id FK
+        timestamptz iade_zamani
+        bigint iade_alan_id FK
     }
     ham_okutma {
         bigint id PK "DEĞİŞTİRİLEMEZ"

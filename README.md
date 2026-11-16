@@ -77,11 +77,11 @@ atlas_trafo/
 
 ## 4. Veritabanı
 
-`pdks` şemasında **24 tablo** (main) + fazla mesai için **2 tablo** (PR #6). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
+`pdks` şemasında **26 tablo** (main'deki 24 + geçici kart 2) + fazla mesai için **2 tablo** (PR #6). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
 
 | Grup | Tablolar |
 |---|---|
-| Kişiler ve organizasyon | kullanici, departman, calisan, kart |
+| Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici), departman, calisan, kart, gecici_kart, gecici_kart_zimmet |
 | Vardiya, izin, ayar | vardiya_tanim, vardiya_plani, izin, resmi_tatil, ayar, ayar_gecmisi |
 | Ham veri (değiştirilemez) | aktarim, okuyucu, ham_okutma, kanit_kaydi, okutma_isareti |
 | İşleme | gece_isi, ariza, uyari |
@@ -98,6 +98,8 @@ atlas_trafo/
 | `20261114000400_varsayilan_ayarlar.sql` | Varsayılan ayarlar ve 4 vardiya |
 | `20261115000500_fazla_mesai.sql` *(PR #6)* | Yazılı onay, plan, 11 / 270 saat sınırı |
 | `20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının veritabanından kaldırılması |
+| `20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, güvenlik rolü, geçici kart uyarıları |
+| `20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı |
 
 ---
 
@@ -130,9 +132,10 @@ streamlit run web/app.py
 | Amir ve İK ekranları | ✅ main — örnek veriyle; veritabanına bağlanacak |
 | Fazla mesai (33 test) + bağlantı testi | ⏳ PR #6 |
 | Kiosk parçalarının veritabanından kaldırılması (9 test) | ✅ Bu PR |
-| Kart paylaşımı şüphe kuralı + fiili fazla mesai uyarıları | ⬜ Yapılacak (migration 0600) |
-| Geçici kart ve zimmet | ⬜ Yapılacak (migration 0700) |
-| Saatlik izin | ⬜ Yapılacak (migration 0800) |
+| Kart paylaşımı şüphe kuralı (testli) | ✅ Bu PR |
+| Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
+| Geçici kart ve zimmet (34 test, kart paylaşımıyla birlikte) | ✅ Bu PR |
+| Saatlik izin | ⬜ Yapılacak |
 | Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
 | Gece işi (içe aktarma → işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) | ⬜ Yapılacak |
 | Ekranların veritabanına bağlanması, giriş | ⬜ Yapılacak |
