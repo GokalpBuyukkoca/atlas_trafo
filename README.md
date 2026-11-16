@@ -1,7 +1,7 @@
 # Atlas Trafo PDKS Kayıt Düzeltme Sistemi
 
 Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi.
-**Ekip:** Mehmet · Gökalp · Yusuf · Fırat · **Teslim:** 30.12.2026 · **Çalışan ilk sürüm hedefi:** 29.11.2026
+**Ekip:** Mehmet · Gökalp · Yusuf · Fırat · **Teslim:** 29.11.2026
 
 > Gerçek bir şirket için tasarlandı. Repoda **yalnızca sahte (sentetik) veri** bulunur; gerçek Atlas Trafo verisi asla yüklenmez.
 
@@ -28,7 +28,7 @@ Bu sistem mevcut PDKS'yi **değiştirmez**, kayıtlarını alıp yanında çalı
 - **Kart unutana:** güvenlikten zimmetli **geçici kart**; o da yoksa amir onayı.
 - Kilitli ay geri açılamaz; sonradan gelen düzeltme sonraki aya "fark satırı" olur.
 
-Ayrıntılı sorun–çözüm eşlemesi (17 sorun): `docs/` altında.
+Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 
 ---
 
@@ -49,7 +49,7 @@ Ayrıntılı sorun–çözüm eşlemesi (17 sorun): `docs/` altında.
 | Raporlama | Power BI — **karar bekliyor** | Power BI Desktop yalnızca Windows'ta çalışır; zorunlu değilse grafikler Streamlit'te |
 | Araçlar | Git, GitHub, GitHub Actions, Supabase CLI, psql, Claude Code | |
 
-**Kullanılmayanlar:** SQL Server (ilk planda vardı, Supabase'e geçildi), biyometri, mobil uygulama, kiosk, Supabase Auth ve Supabase'in otomatik REST API'si.
+**Kullanılmayanlar:** biyometri, mobil uygulama, kiosk, Supabase Auth ve Supabase'in otomatik REST API'si.
 
 ---
 
@@ -128,6 +128,7 @@ streamlit run web/app.py
 | Veritabanı şeması, kurallar, roller (32 test) | ✅ main |
 | Amir ve İK ekranları | ✅ main — örnek veriyle; veritabanına bağlanacak |
 | Fazla mesai (33 test) + bağlantı testi | ⏳ PR #6 |
+| Kiosk parçalarının veritabanından kaldırılması | ⬜ Yapılacak (yeni migration) |
 | Kart paylaşımı şüphe kuralı + fiili fazla mesai uyarıları | ⬜ Yapılacak (migration 0600) |
 | Geçici kart ve zimmet | ⬜ Yapılacak (migration 0700) |
 | Saatlik izin | ⬜ Yapılacak (migration 0800) |

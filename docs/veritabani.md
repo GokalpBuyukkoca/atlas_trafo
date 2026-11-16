@@ -1,6 +1,6 @@
 # Veritabanı Tasarımı (Supabase / PostgreSQL)
 
-Proje planında SQL Server Express vardı; ekip **Supabase** (bulutta PostgreSQL) kullanmaya karar verdi.
+Veritabanı **Supabase** (bulutta PostgreSQL).
 Tüm tablolar `pdks` adlı şemada durur. Supabase'in otomatik REST API'si yalnızca `public` şemasını
 açtığı için tablolarımız internete açılmaz. Streamlit uygulaması ve gece işi veritabanına kendi
 kullanıcılarıyla doğrudan bağlanır.
@@ -10,11 +10,11 @@ kullanıcılarıyla doğrudan bağlanır.
 | Dosya | İçerik |
 |---|---|
 | `supabase/migrations/20261114000100_tablolar.sql` | Şema ve 24 tablo |
-| `supabase/migrations/20261114000200_kurallar.sql` | Trigger'lar, fonksiyonlar, görünümler (silinemezlik, ay kilidi, PIN) |
+| `supabase/migrations/20261114000200_kurallar.sql` | Trigger'lar, fonksiyonlar, görünümler (silinemezlik, ay kilidi) |
 | `supabase/migrations/20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri, yetkiler |
 | `supabase/migrations/20261114000400_varsayilan_ayarlar.sql` | İK ayarlarının varsayılanları, örnek vardiyalar |
 | `supabase/migrations/20261115000500_fazla_mesai.sql` | Fazla mesai: yazılı onay, plan, 270 saat / 11 saat sınırları (+2 tablo) |
-| `supabase/tests/kurallar_testi.sql` | 33 kural testi (her şeyi geri alır, iz bırakmaz) |
+| `supabase/tests/kurallar_testi.sql` | 32 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
@@ -39,7 +39,7 @@ kullanıcılarıyla doğrudan bağlanır.
    gelen düzeltme sonraki açık aya `fark_satiri = true` olarak yazılır. Puantaj (`puantaj_satiri`)
    yalnızca kilitli aya yazılır ve sonra değiştirilemez.
 7. **Ücret hesaplanmaz.** Puantajda yalnızca gün ve dakikalar var, para alanı yok.
-8. **Gizli bilgi yok.** PIN açık yazılmaz, `pin_ozeti` (bcrypt) tutulur. Veritabanı şifreleri koda değil `.env`'ye.
+8. **Gizli bilgi yok.** Şifreler açık metin saklanmaz (bcrypt). Veritabanı şifreleri koda değil `.env`'ye.
 
 ## Sorun → tablo eşlemesi
 
@@ -48,7 +48,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 1 Giriş okutmama | `kanit_kaydi` + `duzeltme`; kanıt vardiya başından sonraysa saat yazılmaz, `amir_sorusu` (`kanit_vardiya_sonrasi`). Yürüme payı: `ayar.yurume_payi_dk` |
 | 2 Çıkış okutmama | Kanıttaki çıkış saati yazılır (vardiya sonu değil); yoksa `amir_sorusu` (`cikis_yok`) |
 | 3 Mükerrer okutma | `okutma_isareti` (`mukerrer`), eşik `ayar.mukerrer_esik_dk` |
-| 4 Kart unutma/kaybetme | `kart.durum = 'iptal'`, iptal kartla okutma → `uyari`; `amir_sorusu.cevap = 'kart_unuttu'` |
+| 4 Kart unutma/kaybetme | Güvenlikten zimmetli **geçici kart** (tablolar migration 0700'de eklenecek); geçici kart yoksa `amir_sorusu.cevap = 'kart_unuttu'`. Kayıp kart: `kart.durum = 'iptal'`, iptal kartla okutma → `uyari` |
 | 5 Okuyucu arızası | `okuyucu`, `ariza` (manuel ya da `otomatik_suphe`), `duzeltme.ariza_id` |
 | 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün; pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
 | 8 Vardiya değişikliği (basit) | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu` |
@@ -58,7 +58,10 @@ kullanıcılarıyla doğrudan bağlanır.
 | 13 Ay sonu yığılması | `amir_sorusu.son_cevap_tarihi`, `eskale_*`, `kullanici.ust_amir_id`, `departman.vekil_amir_id`, `gece_isi` + `v_gece_isi_durumu` |
 | 14 İzin/rapor (basit) | `izin`; amir `v_izin_amir` görünümünden yalnızca "izinli" görür |
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
-| 17 Kiosk | `v_kiosk_kayitlar`, `itiraz`, `kiosk_giris()` / `kiosk_pin_degistir()`; kilitlenme İK'ya `uyari` |
+| 6 Kart paylaşımı | Tekrar eden ardışık okutma kuralı ve uyarı türü (migration 0600'de eklenecek); karar İK'da |
+| 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
+| 15 Bordro aktarımı | `puantaj_satiri`; CSV'yi Python üretir |
+| 17 Çalışan kendi kaydını göremiyor | **Kiosk yok.** Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
 
@@ -235,5 +238,6 @@ cur.execute(
 
 - Değerler için enum yerine `text + check` kullandık: okunması ve yeni değer eklemesi daha kolay.
 - `vardiya_plani` ve `izin` değiştirilebilir; bunların etkisi `gun_kaydi`'na yine `duzeltme` üzerinden yansır.
-- Uygulama girişi (amir/İK şifresi) henüz seçilmedi. `kullanici.auth_kullanici_id` ileride Supabase Auth ile eşlemek için hazır.
+- Uygulama girişi (amir/İK) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre. Supabase Auth kullanılmıyor.
+- **Kiosk projeden çıkarıldı.** 0100–0200'deki kiosk parçaları (`calisan.pin_ozeti`, `kilitli_mi`, `kiosk_giris()`, `kiosk_pin_degistir()`, `pin_sifirla()`, `v_kiosk_kayitlar`, PIN ayarları) yeni bir migration ile kaldırılacak; mevcut migration dosyaları değiştirilmez.
 - Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak Python'un işi; veritabanı yalnızca kuralları korur.
