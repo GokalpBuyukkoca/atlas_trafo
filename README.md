@@ -1,7 +1,7 @@
 # Atlas Trafo PDKS Kayıt Düzeltme Sistemi
 
 Bilişim Sistemleri Analizi ve Tasarımı dersi ekip projesi.
-**Ekip:** Mehmet · Gökalp · Yusuf · Fırat · **Teslim:** 29.11.2026
+**Ekip:** Mehmet · Gökalp · Yusuf · Fırat · **Teslim:** 07.12.2026
 
 > Gerçek bir şirket için tasarlandı. Repoda **yalnızca sahte (sentetik) veri** bulunur; gerçek Atlas Trafo verisi asla yüklenmez.
 
