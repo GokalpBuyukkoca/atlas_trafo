@@ -19,12 +19,12 @@ Bu sistem mevcut PDKS'yi **değiştirmez**, kayıtlarını alıp yanında çalı
 4. **Kanıt yoksa** ertesi sabah amire sorar. Cevapsız soru 3 gün sonra üst amire ve İK'ya gider.
 5. Her düzeltme kim / ne zaman / eski-yeni değer / gerekçe / dayanak ile **silinemeyen** bir tabloya yazılır.
 6. Fazla mesaide yazılı onay, günlük 11 saat ve yıllık 270 saat sınırlarını denetler.
-7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika, ücret yok) CSV olarak alınır.
+7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika) CSV olarak alınır.
 
 ### Temel kararlar
 - **Çalışan aleyhine her karar İK'dadır** (KVKK m.11): devamsızlık, itirazın reddi, kart paylaşımı, plansız fazla mesai. Sistem en fazla "şüphe" ya da "uyarı" üretir.
-- **Biyometri yok** (KVKK Kurulu kararı). **Akıllı telefon varsayılmaz.**
-- **Kiosk yok.** Çalışan isterse İK, sistemden kayıt dökümünü PDF olarak verir; itirazı amir ya da İK sisteme girer.
+- Personel PDKS kartıyla tanınır.
+- Çalışan isterse İK, sistemden kayıt dökümünü PDF olarak verir; itirazı amir ya da İK sisteme girer.
 - **Kart unutana:** güvenlikten zimmetli **geçici kart**; o da yoksa amir onayı.
 - Kilitli ay geri açılamaz; sonradan gelen düzeltme sonraki aya "fark satırı" olur.
 
@@ -48,8 +48,6 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 | Test | SQL testleri (`supabase/tests`), pytest *(gece işiyle)* | SQL testleri sonda ROLLBACK ile iz bırakmaz |
 | Raporlama | Power BI — **karar bekliyor** | Power BI Desktop yalnızca Windows'ta çalışır; zorunlu değilse grafikler Streamlit'te |
 | Araçlar | Git, GitHub, GitHub Actions, Supabase CLI, psql, Claude Code | |
-
-**Kullanılmayanlar:** biyometri, mobil uygulama, kiosk, Supabase Auth ve Supabase'in otomatik REST API'si.
 
 ---
 
@@ -97,7 +95,7 @@ atlas_trafo/
 | `20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri |
 | `20261114000400_varsayilan_ayarlar.sql` | Varsayılan ayarlar ve 4 vardiya |
 | `20261115000500_fazla_mesai.sql` | Yazılı onay, plan, 11 / 270 saat sınırı |
-| `20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının veritabanından kaldırılması |
+| `20261117010000_kiosk_kaldir.sql` | Şema düzenlemesi: PIN alanları ve ilgili fonksiyonlar |
 | `20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, güvenlik rolü, geçici kart uyarıları |
 | `20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı |
 
@@ -131,7 +129,6 @@ streamlit run web/app.py
 | Veritabanı şeması, kurallar, roller (26 test) | ✅ main |
 | Amir ve İK ekranları | ✅ main · veritabanına bağlanması PR #7'de (Mehmet) |
 | Fazla mesai (34 test) + bağlantı testi | ✅ main |
-| Kiosk parçalarının veritabanından kaldırılması (9 test) | ✅ Bu PR |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ Bu PR |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |

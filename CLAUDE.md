@@ -8,9 +8,9 @@ Claude Code bu dosyayı her oturumda okur. Buradaki kurallar her istekte geçerl
 - Mevcut kartlı PDKS değişmez. Sistem onun kayıtlarını alır, hatalı/eksik olanları bulur:
   kanıt (kapı, yemekhane, servis kaydı) varsa kendisi düzeltir, yoksa amire sorar.
 - Çalışan aleyhine karar (devamsızlık, itiraz reddi, kart paylaşımı) her zaman İK'dadır (KVKK m.11).
-- Biyometri yok. Akıllı telefon varsayılmaz.
+- Biyometri kullanma; akıllı telefon varsayma (KVKK ve proje kararı).
 - Veritabanı: Supabase (PostgreSQL). Tüm tablolar `pdks` şemasında (28 tablo). Ayrıntı: `docs/veritabani.md`.
-- Kiosk yok: çalışan isterse İK sistemden PDF döküm verir; itirazı amir ya da İK girer.
+- Çalışan isterse İK sistemden PDF döküm verir; itirazı amir ya da İK girer.
 - Kart unutana güvenlikten zimmetli geçici kart (`gecici_kart`, `gecici_kart_zimmet`).
 - Uygulama: Python + Streamlit. Raporlama: Power BI ya da Streamlit (karar bekliyor).
 

@@ -14,12 +14,12 @@ kullanıcılarıyla doğrudan bağlanır.
 | `supabase/migrations/20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri, yetkiler |
 | `supabase/migrations/20261114000400_varsayilan_ayarlar.sql` | İK ayarlarının varsayılanları, örnek vardiyalar |
 | `supabase/migrations/20261115000500_fazla_mesai.sql` | Fazla mesai: yazılı onay, plan, 270 saat / 11 saat sınırları (+2 tablo) |
-| `supabase/migrations/20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının kaldırılması (PIN alanları, kiosk fonksiyonları ve görünümü, kiosk ayarları, `pin_kilitlendi` uyarı türü) |
+| `supabase/migrations/20261117010000_kiosk_kaldir.sql` | Şema düzenlemesi: PIN alanları ve ilgili fonksiyonlar |
 | `supabase/migrations/20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, `guvenlik` rolü, geçici kart uyarıları, `okutma_sahibi()` |
 | `supabase/migrations/20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı (`kart_paylasim_kontrol()`) |
 | `supabase/tests/kurallar_testi.sql` | 26 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
-| `supabase/tests/kiosk_kaldirma_testi.sql` | Kiosktan hiçbir parça kalmadığını doğrulayan 9 test |
+| `supabase/tests/kiosk_kaldirma_testi.sql` | Şema düzenlemesi testleri (9 test) |
 | `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
@@ -43,8 +43,8 @@ kullanıcılarıyla doğrudan bağlanır.
 6. **Ay sonu kilidi (sorun 11).** Kilitli ayın kayıtları değişmez ve kilit geri açılamaz. Kilitten sonra
    gelen düzeltme sonraki açık aya `fark_satiri = true` olarak yazılır. Puantaj (`puantaj_satiri`)
    yalnızca kilitli aya yazılır ve sonra değiştirilemez.
-7. **Ücret hesaplanmaz.** Puantajda yalnızca gün ve dakikalar var, para alanı yok.
-8. **Gizli bilgi yok.** Şifreler açık metin saklanmaz (bcrypt). Veritabanı şifreleri koda değil `.env`'ye.
+7. **Puantaj gün ve dakika olarak tutulur.**
+8. **Gizli bilgiler korunur.** Şifreler bcrypt özeti olarak saklanır. Veritabanı şifreleri koda değil `.env`'ye.
 
 ## Sorun → tablo eşlemesi
 
@@ -66,7 +66,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
 | 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
 | 15 Bordro aktarımı | `puantaj_satiri`; CSV'yi Python üretir |
-| 17 Çalışan kendi kaydını göremiyor | **Kiosk yok.** Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
+| 17 Çalışan kendi kaydını göremiyor | Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
 
@@ -217,7 +217,7 @@ Diyagramda okunurluk için yalnızca önemli sütunlar var. `ayar`, `ayar_gecmis
 
 Sınırlar **onay anında** veritabanında kontrol edilir; ekran atlansa bile delinemez.
 Fazla mesai burada basitçe "planlı vardiya bitişinden sonra çalışılan süre"dir (haftalık 45 saat hesabı kapsam dışı).
-Ücret yok, yalnızca dakika. Plansız ya da planı aşan çalışmayı gece işi puantaja yazmaz;
+Süreler dakika olarak tutulur. Plansız ya da planı aşan çalışmayı gece işi puantaja yazmaz;
 İK'ya `fm_plansiz_calisma`, `fm_onay_yok` veya `fm_gunluk_sinir_asildi` uyarısı yazar (eşik: `ayar.fm_plansiz_esik_dk`).
 İK ekranı için `v_fazla_mesai_yillik` görünümü çalışan başına onaylı, gerçekleşen ve kalan dakikayı verir.
 
@@ -258,6 +258,5 @@ cur.execute(
 
 - Değerler için enum yerine `text + check` kullandık: okunması ve yeni değer eklemesi daha kolay.
 - `vardiya_plani` ve `izin` değiştirilebilir; bunların etkisi `gun_kaydi`'na yine `duzeltme` üzerinden yansır.
-- Uygulama girişi (amir/İK) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre. Supabase Auth kullanılmıyor.
-- **Kiosk yok.** Kiosk için eklenen parçalar `20261117010000_kiosk_kaldir.sql` ile kaldırıldı. `ayar_gecmisi`'ndeki eski kiosk ayarı kayıtları silinemez iz olduğu için yerinde durur.
+- Uygulama girişi (amir/İK/güvenlik) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre.
 - Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak Python'un işi; veritabanı yalnızca kuralları korur.
