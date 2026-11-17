@@ -1,6 +1,6 @@
 # Veritabanı Tasarımı (Supabase / PostgreSQL)
 
-Proje planında SQL Server Express vardı; ekip **Supabase** (bulutta PostgreSQL) kullanmaya karar verdi.
+Veritabanı **Supabase** (bulutta PostgreSQL).
 Tüm tablolar `pdks` adlı şemada durur. Supabase'in otomatik REST API'si yalnızca `public` şemasını
 açtığı için tablolarımız internete açılmaz. Streamlit uygulaması ve gece işi veritabanına kendi
 kullanıcılarıyla doğrudan bağlanır.
@@ -10,12 +10,17 @@ kullanıcılarıyla doğrudan bağlanır.
 | Dosya | İçerik |
 |---|---|
 | `supabase/migrations/20261114000100_tablolar.sql` | Şema ve 24 tablo |
-| `supabase/migrations/20261114000200_kurallar.sql` | Trigger'lar, fonksiyonlar, görünümler (silinemezlik, ay kilidi, PIN) |
+| `supabase/migrations/20261114000200_kurallar.sql` | Trigger'lar, fonksiyonlar, görünümler (silinemezlik, ay kilidi) |
 | `supabase/migrations/20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri, yetkiler |
 | `supabase/migrations/20261114000400_varsayilan_ayarlar.sql` | İK ayarlarının varsayılanları, örnek vardiyalar |
 | `supabase/migrations/20261115000500_fazla_mesai.sql` | Fazla mesai: yazılı onay, plan, 270 saat / 11 saat sınırları (+2 tablo) |
-| `supabase/tests/kurallar_testi.sql` | 33 kural testi (her şeyi geri alır, iz bırakmaz) |
+| `supabase/migrations/20261117010000_kiosk_kaldir.sql` | Şema düzenlemesi: PIN alanları ve ilgili fonksiyonlar |
+| `supabase/migrations/20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, `guvenlik` rolü, geçici kart uyarıları, `okutma_sahibi()` |
+| `supabase/migrations/20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı (`kart_paylasim_kontrol()`) |
+| `supabase/tests/kurallar_testi.sql` | 26 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
+| `supabase/tests/kiosk_kaldirma_testi.sql` | Şema düzenlemesi testleri (9 test) |
+| `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
 > **Trigger** = bir tabloya ekleme/değiştirme/silme yapılırken kendiliğinden çalışan kontrol.
@@ -38,8 +43,8 @@ kullanıcılarıyla doğrudan bağlanır.
 6. **Ay sonu kilidi (sorun 11).** Kilitli ayın kayıtları değişmez ve kilit geri açılamaz. Kilitten sonra
    gelen düzeltme sonraki açık aya `fark_satiri = true` olarak yazılır. Puantaj (`puantaj_satiri`)
    yalnızca kilitli aya yazılır ve sonra değiştirilemez.
-7. **Ücret hesaplanmaz.** Puantajda yalnızca gün ve dakikalar var, para alanı yok.
-8. **Gizli bilgi yok.** PIN açık yazılmaz, `pin_ozeti` (bcrypt) tutulur. Veritabanı şifreleri koda değil `.env`'ye.
+7. **Puantaj gün ve dakika olarak tutulur.**
+8. **Gizli bilgiler korunur.** Şifreler bcrypt özeti olarak saklanır. Veritabanı şifreleri koda değil `.env`'ye.
 
 ## Sorun → tablo eşlemesi
 
@@ -48,7 +53,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 1 Giriş okutmama | `kanit_kaydi` + `duzeltme`; kanıt vardiya başından sonraysa saat yazılmaz, `amir_sorusu` (`kanit_vardiya_sonrasi`). Yürüme payı: `ayar.yurume_payi_dk` |
 | 2 Çıkış okutmama | Kanıttaki çıkış saati yazılır (vardiya sonu değil); yoksa `amir_sorusu` (`cikis_yok`) |
 | 3 Mükerrer okutma | `okutma_isareti` (`mukerrer`), eşik `ayar.mukerrer_esik_dk` |
-| 4 Kart unutma/kaybetme | `kart.durum = 'iptal'`, iptal kartla okutma → `uyari`; `amir_sorusu.cevap = 'kart_unuttu'` |
+| 4 Kart unutma/kaybetme | Güvenlikten zimmetli **geçici kart**: `gecici_kart`, `gecici_kart_zimmet` (iade edilmemiş kart başkasına verilemez, çalışanda aynı anda tek geçici kart, zimmet silinemez). Okutmanın sahibi `okutma_sahibi()` ile bulunur; amire soru gitmez. Geçici kart yoksa `amir_sorusu.cevap = 'kart_unuttu'`. Uyarılar: `gecici_kart_cakisma`, `gecici_kart_zimmetsiz`, `gecici_kart_iade_edilmedi`, `sik_kart_unutma` (`gecici_kart_kontrol()`). Kayıp kart: `kart.durum = 'iptal'` |
 | 5 Okuyucu arızası | `okuyucu`, `ariza` (manuel ya da `otomatik_suphe`), `duzeltme.ariza_id` |
 | 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün; pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
 | 8 Vardiya değişikliği (basit) | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu` |
@@ -58,7 +63,10 @@ kullanıcılarıyla doğrudan bağlanır.
 | 13 Ay sonu yığılması | `amir_sorusu.son_cevap_tarihi`, `eskale_*`, `kullanici.ust_amir_id`, `departman.vekil_amir_id`, `gece_isi` + `v_gece_isi_durumu` |
 | 14 İzin/rapor (basit) | `izin`; amir `v_izin_amir` görünümünden yalnızca "izinli" görür |
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
-| 17 Kiosk | `v_kiosk_kayitlar`, `itiraz`, `kiosk_giris()` / `kiosk_pin_degistir()`; kilitlenme İK'ya `uyari` |
+| 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
+| 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
+| 15 Bordro aktarımı | `puantaj_satiri`; CSV'yi Python üretir |
+| 17 Çalışan kendi kaydını göremiyor | Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
 
@@ -68,6 +76,9 @@ erDiagram
     kullanici ||--o{ departman : "amiri / vekili"
     kullanici ||--o{ kullanici : "üst amir"
     calisan ||--o{ kart : "sahibi"
+    gecici_kart ||--o{ gecici_kart_zimmet : "zimmetleri"
+    calisan ||--o{ gecici_kart_zimmet : "aldığı geçici kartlar"
+    kullanici ||--o{ gecici_kart_zimmet : "veren / iade alan"
     calisan ||--o{ vardiya_plani : "planı"
     vardiya_tanim ||--o{ vardiya_plani : ""
     calisan ||--o{ izin : ""
@@ -100,14 +111,26 @@ erDiagram
         text ad
         text soyad
         smallint departman_id FK
-        text pin_ozeti
-        bool kilitli_mi
     }
     kart {
         bigint id PK
         text kart_no UK
         bigint calisan_id FK
         text durum "aktif / iptal"
+    }
+    gecici_kart {
+        bigint id PK
+        text kart_no UK
+        text durum "aktif / kayip / iptal"
+    }
+    gecici_kart_zimmet {
+        bigint id PK "SİLİNEMEZ"
+        bigint gecici_kart_id FK
+        bigint calisan_id FK
+        timestamptz verilis_zamani
+        bigint veren_id FK
+        timestamptz iade_zamani
+        bigint iade_alan_id FK
     }
     ham_okutma {
         bigint id PK "DEĞİŞTİRİLEMEZ"
@@ -194,7 +217,7 @@ Diyagramda okunurluk için yalnızca önemli sütunlar var. `ayar`, `ayar_gecmis
 
 Sınırlar **onay anında** veritabanında kontrol edilir; ekran atlansa bile delinemez.
 Fazla mesai burada basitçe "planlı vardiya bitişinden sonra çalışılan süre"dir (haftalık 45 saat hesabı kapsam dışı).
-Ücret yok, yalnızca dakika. Plansız ya da planı aşan çalışmayı gece işi puantaja yazmaz;
+Süreler dakika olarak tutulur. Plansız ya da planı aşan çalışmayı gece işi puantaja yazmaz;
 İK'ya `fm_plansiz_calisma`, `fm_onay_yok` veya `fm_gunluk_sinir_asildi` uyarısı yazar (eşik: `ayar.fm_plansiz_esik_dk`).
 İK ekranı için `v_fazla_mesai_yillik` görünümü çalışan başına onaylı, gerçekleşen ve kalan dakikayı verir.
 
@@ -228,12 +251,12 @@ cur.execute(
 4. Bağlantı bilgisini **Project Settings → Database → Connection string** kısmından al.
    Pooler kullanılıyorsa kullanıcı adı `pdks_uygulama.<proje-kodu>` biçimindedir.
 5. `.env.example` dosyasını `.env` olarak kopyalayıp bilgileri doldur. `.env` zaten `.gitignore`'da.
-6. Testleri çalıştır: `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/kurallar_testi.sql`
+6. Testleri çalıştır: `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/<dosya>.sql` (her test dosyası için)
    Sonda `TÜM TESTLER GEÇTİ` görmelisin.
 
 ## Bilinçli tercihler
 
 - Değerler için enum yerine `text + check` kullandık: okunması ve yeni değer eklemesi daha kolay.
 - `vardiya_plani` ve `izin` değiştirilebilir; bunların etkisi `gun_kaydi`'na yine `duzeltme` üzerinden yansır.
-- Uygulama girişi (amir/İK şifresi) henüz seçilmedi. `kullanici.auth_kullanici_id` ileride Supabase Auth ile eşlemek için hazır.
+- Uygulama girişi (amir/İK/güvenlik) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre.
 - Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak Python'un işi; veritabanı yalnızca kuralları korur.
