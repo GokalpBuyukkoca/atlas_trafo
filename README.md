@@ -134,7 +134,7 @@ streamlit run web/app.py
 | Kiosk parçalarının veritabanından kaldırılması (9 test) | ✅ Bu PR |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ Bu PR |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
-| Geçici kart ve zimmet (34 test, kart paylaşımıyla birlikte) | ✅ Bu PR |
+| Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ Bu PR |
 | Saatlik izin | ⬜ Yapılacak |
 | Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
 | Gece işi (içe aktarma → işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) | ⬜ Yapılacak |

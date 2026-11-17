@@ -110,3 +110,12 @@ end;
 $$;
 
 grant execute on function pdks.kart_paylasim_kontrol(date) to pdks_gece_isi;
+
+-- ---------------------------------------------------------------------
+-- Fonksiyon yetkisi temizliği
+-- PostgreSQL yeni fonksiyonları varsayılan olarak herkese (PUBLIC) açar.
+-- 0300'deki temizlik yalnızca o anki fonksiyonları kapsıyordu; sonradan
+-- eklenenler (0500 ve sonrası) için yeniden yapılır. Rollere verilen
+-- yetkiler etkilenmez.
+-- ---------------------------------------------------------------------
+revoke execute on all functions in schema pdks from public;

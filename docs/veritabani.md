@@ -20,7 +20,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | `supabase/tests/kurallar_testi.sql` | 26 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/kiosk_kaldirma_testi.sql` | Kiosktan hiçbir parça kalmadığını doğrulayan 9 test |
-| `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart ve kart paylaşımı için 34 test |
+| `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
 
 > **Migration** = veritabanını adım adım kuran, sırayla çalıştırılan SQL dosyası.
 > **Trigger** = bir tabloya ekleme/değiştirme/silme yapılırken kendiliğinden çalışan kontrol.

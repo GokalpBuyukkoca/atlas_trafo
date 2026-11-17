@@ -212,5 +212,9 @@ select test.dogrula('eşik ayardan değişince (4 gün) 1007–1008 da uyarı al
     exists (select 1 from pdks.uyari where tur = 'kart_paylasim_suphesi' and calisan_id = test.c('1007')));
 reset role;
 
+select test.dogrula('pdks fonksiyonlarının hiçbiri herkese (PUBLIC) açık değil',
+    not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'pdks' and has_function_privilege('public', p.oid, 'execute')));
+
 do $$ begin raise notice 'GEÇİCİ KART VE KART PAYLAŞIMI TESTLERİ GEÇTİ'; end $$;
 rollback;
