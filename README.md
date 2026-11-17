@@ -77,7 +77,7 @@ atlas_trafo/
 
 ## 4. Veritabanı
 
-`pdks` şemasında **26 tablo** (main'deki 24 + geçici kart 2) + fazla mesai için **2 tablo** (PR #6). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
+`pdks` şemasında **28 tablo** (temel 24 + fazla mesai 2 + geçici kart 2). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
 
 | Grup | Tablolar |
 |---|---|
@@ -86,7 +86,7 @@ atlas_trafo/
 | Ham veri (değiştirilemez) | aktarim, okuyucu, ham_okutma, kanit_kaydi, okutma_isareti |
 | İşleme | gece_isi, ariza, uyari |
 | Gün, karar, düzeltme, dönem | gun_kaydi, amir_sorusu, itiraz, duzeltme, donem, puantaj_satiri |
-| Fazla mesai (PR #6) | fazla_mesai_onayi, fazla_mesai_plani |
+| Fazla mesai | fazla_mesai_onayi, fazla_mesai_plani |
 
 **Veritabanının zorladığı kurallar:** ham kayıt, `duzeltme` ve `puantaj_satiri` değiştirilemez ve silinemez · `gun_kaydi` yalnızca `pdks.duzeltme_uygula()` ile değişir · devamsızlık ve itiraz reddi yalnızca İK · kilitli ay açılamaz.
 
@@ -96,7 +96,7 @@ atlas_trafo/
 | `20261114000200_kurallar.sql` | Trigger'lar, fonksiyonlar, görünümler |
 | `20261114000300_roller_ve_yetkiler.sql` | `pdks_uygulama` ve `pdks_gece_isi` rolleri |
 | `20261114000400_varsayilan_ayarlar.sql` | Varsayılan ayarlar ve 4 vardiya |
-| `20261115000500_fazla_mesai.sql` *(PR #6)* | Yazılı onay, plan, 11 / 270 saat sınırı |
+| `20261115000500_fazla_mesai.sql` | Yazılı onay, plan, 11 / 270 saat sınırı |
 | `20261117010000_kiosk_kaldir.sql` | Kiosk parçalarının veritabanından kaldırılması |
 | `20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, güvenlik rolü, geçici kart uyarıları |
 | `20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı |
@@ -129,16 +129,19 @@ streamlit run web/app.py
 | Parça | Durum |
 |---|---|
 | Veritabanı şeması, kurallar, roller (26 test) | ✅ main |
-| Amir ve İK ekranları | ✅ main — örnek veriyle; veritabanına bağlanacak |
-| Fazla mesai (33 test) + bağlantı testi | ⏳ PR #6 |
+| Amir ve İK ekranları | ✅ main · veritabanına bağlanması PR #7'de (Mehmet) |
+| Fazla mesai (34 test) + bağlantı testi | ✅ main |
 | Kiosk parçalarının veritabanından kaldırılması (9 test) | ✅ Bu PR |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ Bu PR |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
+| Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
+| Güvenlik ekranı (geçici kart ver / iade al) | ⬜ Yapılacak |
 | Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ Bu PR |
 | Saatlik izin | ⬜ Yapılacak |
 | Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
 | Gece işi (içe aktarma → işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) | ⬜ Yapılacak |
-| Ekranların veritabanına bağlanması, giriş | ⬜ Yapılacak |
+| Ekranların veritabanına bağlanması | ⏳ PR #7 (Mehmet) |
+| Giriş (amir, İK, güvenlik) | ⬜ Yapılacak |
 | Ay kilidi, bordro CSV, çalışan PDF dökümü | ⬜ Yapılacak |
 | Raporlama (Power BI veya Streamlit) | ⬜ Karar bekliyor |
 | Rapor diyagramları (Use Case, DFD, AS-IS, TO-BE) | ⬜ Yapılacak |
