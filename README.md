@@ -126,18 +126,18 @@ streamlit run web/app.py
 
 | Parça | Durum |
 |---|---|
-| Veritabanı şeması, kurallar, roller (26 test) | ✅ main |
-| Amir ve İK ekranları | ✅ main · veritabanına bağlanması PR #7'de (Mehmet) |
-| Fazla mesai (34 test) + bağlantı testi | ✅ main |
-| Kart paylaşımı şüphe kuralı (testli) | ✅ Bu PR |
+| Veritabanı şeması, kurallar, roller (26 test) | ✅ |
+| Amir ve İK ekranları | ✅ Örnek veriyle |
+| Fazla mesai (34 test) + bağlantı testi | ✅ |
+| Kart paylaşımı şüphe kuralı (testli) | ✅ |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
 | Güvenlik ekranı (geçici kart ver / iade al) | ⬜ Yapılacak |
-| Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ Bu PR |
+| Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Saatlik izin | ⬜ Yapılacak |
 | Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
 | Gece işi (içe aktarma → işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) | ⬜ Yapılacak |
-| Ekranların veritabanına bağlanması | ⏳ PR #7 (Mehmet) |
+| Ekranların veritabanına bağlanması | ⬜ Yapılacak |
 | Giriş (amir, İK, güvenlik) | ⬜ Yapılacak |
 | Ay kilidi, bordro CSV, çalışan PDF dökümü | ⬜ Yapılacak |
 | Raporlama (Power BI veya Streamlit) | ⬜ Karar bekliyor |
