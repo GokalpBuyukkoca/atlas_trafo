@@ -1,0 +1,255 @@
+import Link from "next/link";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
+import { tekDeger } from "@/lib/arama";
+import { tarihSaat } from "@/lib/bicim";
+import { bugun } from "@/lib/hafta";
+import { rolGerekli } from "@/lib/oturum";
+import { ayAdi, ayKaydir, saatDakika, type PuantajSatiri } from "@/lib/puantaj";
+import { tumSatirlar } from "@/lib/supabase/sayfali";
+import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { ExcelIndir } from "./excel-indir";
+
+export const metadata = { title: "Puantaj" };
+
+type Calisan = { id: number; sicil_no: string; ad: string; soyad: string; aktif: boolean; departman: { ad: string } | null };
+
+// v_puantaj_canli (açık ay) ve puantaj_satiri (kilitli ay) aynı sayısal sütunları taşır
+type Sayilar = {
+  calisan_id: number;
+  calisilan_gun: number;
+  calisma_dk: number;
+  fazla_mesai_dk: number;
+  gec_kalma_dk: number;
+  erken_cikis_dk: number;
+  devamsiz_gun: number;
+  izinli_gun: number;
+  raporlu_gun: number;
+  tatil_gun: number;
+  bekleyen_gun?: number;
+  satir_turu?: "normal" | "fark";
+  kaynak?: { yil: number; ay: number } | null;
+};
+
+const SAYI_SUTUNLARI =
+  "calisan_id, calisilan_gun, calisma_dk, fazla_mesai_dk, gec_kalma_dk, erken_cikis_dk, devamsiz_gun, izinli_gun, raporlu_gun, tatil_gun";
+
+// Puantaj bordroya gider ve rapor (sağlık) bilgisi içerir: yalnızca İK.
+export default async function PuantajSayfasi({ searchParams }: PageProps<"/puantaj">) {
+  const kullanici = await rolGerekli(["ik"]);
+  const parametre = await searchParams;
+
+  const istenen = tekDeger(parametre.ay);
+  const ay = /^\d{4}-(0[1-9]|1[0-2])$/.test(istenen) ? istenen : bugun().slice(0, 7);
+  const [yil, ayNo] = ay.split("-").map(Number);
+
+  const supabase = await sunucuIstemcisi();
+
+  const [donemSonucu, calisanlar] = await Promise.all([
+    supabase
+      .from("donem")
+      .select("id, durum, kilit_zamani, kilitleyen:kullanici!kilitleyen_id(ad_soyad)")
+      .eq("yil", yil)
+      .eq("ay", ayNo)
+      .maybeSingle(),
+    tumSatirlar<Calisan>((bas, son) =>
+      supabase.from("calisan").select("id, sicil_no, ad, soyad, aktif, departman:departman_id(ad)").order("sicil_no").range(bas, son),
+    ),
+  ]);
+  if (donemSonucu.error) throw new Error(`Dönem okunamadı: ${donemSonucu.error.message}`);
+
+  const donem = donemSonucu.data as {
+    id: number;
+    durum: "acik" | "kilitli";
+    kilit_zamani: string | null;
+    kilitleyen: { ad_soyad: string } | null;
+  } | null;
+  const kilitli = donem?.durum === "kilitli";
+
+  // Kilitli ay: değişmez puantaj satırları. Açık ay: gün kayıtlarından canlı hesap.
+  const sayilar = kilitli
+    ? await tumSatirlar<Sayilar>((bas, son) =>
+        supabase
+          .from("puantaj_satiri")
+          .select(`${SAYI_SUTUNLARI}, satir_turu, kaynak:donem!kaynak_donem_id(yil, ay)`)
+          .eq("donem_id", donem!.id)
+          .order("id")
+          .range(bas, son),
+      )
+    : await tumSatirlar<Sayilar>((bas, son) =>
+        supabase
+          .from("v_puantaj_canli")
+          .select(`${SAYI_SUTUNLARI}, bekleyen_gun`)
+          .eq("yil", yil)
+          .eq("ay", ayNo)
+          .order("calisan_id")
+          .range(bas, son),
+      );
+
+  const normal = new Map(sayilar.filter((s) => s.satir_turu !== "fark").map((s) => [s.calisan_id, s]));
+  const calisanById = new Map(calisanlar.map((c) => [c.id, c]));
+
+  const satiraCevir = (c: Calisan, s: Sayilar | undefined): PuantajSatiri => ({
+    sicil: c.sicil_no,
+    adSoyad: `${c.ad} ${c.soyad}`,
+    bolum: c.departman?.ad ?? "",
+    calisilanGun: Number(s?.calisilan_gun ?? 0),
+    calismaDk: Number(s?.calisma_dk ?? 0),
+    fazlaMesaiDk: Number(s?.fazla_mesai_dk ?? 0),
+    gecKalmaDk: Number(s?.gec_kalma_dk ?? 0),
+    erkenCikisDk: Number(s?.erken_cikis_dk ?? 0),
+    devamsizGun: Number(s?.devamsiz_gun ?? 0),
+    izinliGun: Number(s?.izinli_gun ?? 0),
+    raporluGun: Number(s?.raporlu_gun ?? 0),
+    tatilGun: Number(s?.tatil_gun ?? 0),
+    bekleyenGun: Number(s?.bekleyen_gun ?? 0),
+    kaynakDonem: s?.kaynak ? `${s.kaynak.yil}-${String(s.kaynak.ay).padStart(2, "0")}` : undefined,
+  });
+
+  // Bordroya çalışan herkes girer; ay içinde ayrılan da kaydı varsa girer.
+  const satirlar = calisanlar.filter((c) => c.aktif || normal.has(c.id)).map((c) => satiraCevir(c, normal.get(c.id)));
+  const farkSatirlari = sayilar
+    .filter((s) => s.satir_turu === "fark")
+    .flatMap((s) => {
+      const c = calisanById.get(s.calisan_id);
+      return c ? [satiraCevir(c, s)] : [];
+    });
+
+  const toplamDk = satirlar.reduce((t, s) => t + s.calismaDk, 0);
+  const toplamFmDk = satirlar.reduce((t, s) => t + s.fazlaMesaiDk, 0);
+  const bekleyenGun = satirlar.reduce((t, s) => t + s.bekleyenGun, 0);
+  const veriVar = sayilar.length > 0;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Puantaj · {ayAdi(ay)}</h1>
+        <p className="text-sm text-muted-foreground">Bordroya giden gün ve dakika özeti. Ücret hesaplanmaz.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Ay" className="flex flex-wrap gap-2">
+          <Link href={`/puantaj?ay=${ayKaydir(ay, -1)}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            ← {ayAdi(ayKaydir(ay, -1))}
+          </Link>
+          <Link href="/puantaj" className={buttonVariants({ variant: "ghost", size: "sm" })}>Bu ay</Link>
+          <Link href={`/puantaj?ay=${ayKaydir(ay, 1)}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            {ayAdi(ayKaydir(ay, 1))} →
+          </Link>
+        </nav>
+        <ExcelIndir
+          ay={ay}
+          durum={kilitli ? "kilitli" : "acik"}
+          satirlar={satirlar}
+          farkSatirlari={farkSatirlari}
+          hazirlayan={kullanici.adSoyad}
+        />
+      </div>
+
+      <OzetIzgarasi>
+        <OzetKarti
+          baslik="Dönem"
+          deger={kilitli ? "Kilitli" : "Açık"}
+          aciklama={
+            kilitli
+              ? `${donem?.kilitleyen?.ad_soyad ?? "—"} · ${tarihSaat(donem?.kilit_zamani)}`
+              : "Canlı hesap; ay kilitlenince kesinleşir"
+          }
+          ton={kilitli ? "iyi" : "notr"}
+        />
+        <OzetKarti baslik="Çalışan" deger={satirlar.length} aciklama={farkSatirlari.length ? `${farkSatirlari.length} fark satırı` : "Bordroya girecek"} />
+        <OzetKarti baslik="Toplam çalışma" deger={saatDakika(toplamDk)} aciklama={`Fazla mesai ${saatDakika(toplamFmDk)} (sa:dk)`} />
+        {!kilitli && (
+          <OzetKarti
+            baslik="Kesinleşmemiş gün"
+            deger={bekleyenGun}
+            aciklama={!veriVar ? "Hesaplanmış gün yok" : bekleyenGun ? "Soru, eksik kayıt ya da hesap bekliyor" : "Hepsi kesin"}
+            ton={!veriVar ? "notr" : bekleyenGun ? "dikkat" : "iyi"}
+          />
+        )}
+      </OzetIzgarasi>
+
+      {!veriVar && !kilitli && (
+        <Alert>
+          <AlertTitle>Bu ay için hesaplanmış gün yok</AlertTitle>
+          <AlertDescription>
+            Puantaj, gece işinin ürettiği günlük kayıtlardan hesaplanır. Gece işi çalışınca sayılar dolar; liste şimdilik sıfırlarla
+            gösteriliyor.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!kilitli && (
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
+          <Button disabled className="self-start">Ayı kilitle</Button>
+          <p className="text-sm text-muted-foreground">
+            Kilitlenen ay geri açılamaz; sonradan gelen düzeltme sonraki aya fark satırı olarak yazılır. Açık soru ya da itiraz
+            varken kilitlenemez. Kilitleme, veritabanındaki fonksiyon (RPC) ekrana açılınca etkinleşecek.
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-20">Sicil</TableHead>
+              <TableHead>Ad soyad</TableHead>
+              <TableHead>Bölüm</TableHead>
+              <TableHead className="text-right">Çalışılan gün</TableHead>
+              <TableHead className="text-right">Çalışma</TableHead>
+              <TableHead className="text-right">Fazla mesai</TableHead>
+              <TableHead className="text-right">Geç kalma</TableHead>
+              <TableHead className="text-right">Erken çıkış</TableHead>
+              <TableHead className="text-right">Devamsız</TableHead>
+              <TableHead className="text-right">İzinli</TableHead>
+              <TableHead className="text-right">Raporlu</TableHead>
+              <TableHead className="text-right">Tatil</TableHead>
+              {!kilitli && <TableHead className="text-right">Kesinleşmemiş</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {satirlar.map((s) => (
+              <TableRow key={s.sicil}>
+                <TableCell className="font-mono">{s.sicil}</TableCell>
+                <TableCell className="font-medium">{s.adSoyad}</TableCell>
+                <TableCell>{s.bolum}</TableCell>
+                <Sayi deger={s.calisilanGun} />
+                <TableCell className="text-right tabular-nums">{saatDakika(s.calismaDk)}</TableCell>
+                <TableCell className="text-right tabular-nums">{s.fazlaMesaiDk ? saatDakika(s.fazlaMesaiDk) : "—"}</TableCell>
+                <Sayi deger={s.gecKalmaDk} birim="dk" />
+                <Sayi deger={s.erkenCikisDk} birim="dk" />
+                <Sayi deger={s.devamsizGun} />
+                <Sayi deger={s.izinliGun} />
+                <Sayi deger={s.raporluGun} />
+                <Sayi deger={s.tatilGun} />
+                {!kilitli && (
+                  <TableCell className="text-right">
+                    {s.bekleyenGun ? <Badge variant="default">{s.bekleyenGun}</Badge> : "—"}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {farkSatirlari.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Bu ayda önceki aylara ait {farkSatirlari.length} fark satırı var; Excel dosyasında ayrı sayfada yer alır.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Sayi({ deger, birim }: { deger: number; birim?: string }) {
+  return (
+    <TableCell className="text-right tabular-nums">
+      {deger ? `${deger.toLocaleString("tr-TR")}${birim ? ` ${birim}` : ""}` : "—"}
+    </TableCell>
+  );
+}

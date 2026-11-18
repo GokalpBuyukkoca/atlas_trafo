@@ -19,6 +19,19 @@ const tarihSaatBicimi = new Intl.DateTimeFormat("tr-TR", {
   minute: "2-digit",
 });
 
+const uzunTarihBicimi = new Intl.DateTimeFormat("tr-TR", {
+  timeZone: SAAT_DILIMI,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+// "18 Kasım 2026 Çarşamba"
+export function uzunTarih(deger: string): string {
+  return uzunTarihBicimi.format(new Date(`${deger}T12:00:00Z`));
+}
+
 // "2026-11-10" (date) ya da "2026-11-10T05:12:00+00" (timestamptz) alır.
 export function tarih(deger: string | null | undefined): string {
   if (!deger) return "—";
@@ -30,6 +43,14 @@ export function tarih(deger: string | null | undefined): string {
 export function tarihSaat(deger: string | null | undefined): string {
   if (!deger) return "—";
   return tarihSaatBicimi.format(new Date(deger));
+}
+
+const saatBicimi = new Intl.DateTimeFormat("tr-TR", { timeZone: SAAT_DILIMI, hour: "2-digit", minute: "2-digit" });
+
+// "07:52" (Türkiye saati)
+export function saat(deger: string | null | undefined): string {
+  if (!deger) return "—";
+  return saatBicimi.format(new Date(deger));
 }
 
 // İki zaman arasındaki süre: "3 sa 20 dk" / "2 gün 4 sa"
