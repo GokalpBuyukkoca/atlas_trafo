@@ -12,6 +12,7 @@ Claude Code bu dosyayı her oturumda okur. Buradaki kurallar her istekte geçerl
 - Veritabanı: Supabase (PostgreSQL). Tüm tablolar `pdks` şemasında (28 tablo). Ayrıntı: `docs/veritabani.md`.
 - İş kuralları veritabanındadır: PostgreSQL fonksiyonları ve trigger'lar (gece işi, düzeltme, görevler ayrılığı, ay kilidi).
 - Giriş ve yetki: Supabase Auth + RLS. Roller: `amir`, `ik`, `guvenlik`, `yonetici` (`kullanici.rol`).
+- Görevler ayrılığı: her kullanıcı `kullanici.calisan_id` ile çalışan kaydına bağlıdır; kimse kendi kaydında işlem yapamaz.
 - Çalışan isterse İK sistemden PDF döküm verir; itirazı amir ya da İK girer.
 - Kart unutana güvenlikten zimmetli geçici kart (`gecici_kart`, `gecici_kart_zimmet`).
 - Frontend: Next.js + TypeScript, Tailwind CSS + shadcn/ui. Veri bağlantısı: supabase-js; fonksiyonlar RPC ile çağrılır.

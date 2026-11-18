@@ -92,7 +92,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | Gün, karar, düzeltme, dönem | gun_kaydi, amir_sorusu, itiraz, duzeltme, donem, puantaj_satiri |
 | Fazla mesai | fazla_mesai_onayi, fazla_mesai_plani |
 
-**Veritabanının zorladığı kurallar:** ham kayıt, `duzeltme` ve `puantaj_satiri` değiştirilemez ve silinemez · `gun_kaydi` yalnızca `pdks.duzeltme_uygula()` ile değişir · devamsızlık ve itiraz reddi yalnızca İK · kilitli ay açılamaz.
+**Veritabanının zorladığı kurallar:** ham kayıt, `duzeltme` ve `puantaj_satiri` değiştirilemez ve silinemez · `gun_kaydi` yalnızca `pdks.duzeltme_uygula()` ile değişir · devamsızlık ve itiraz reddi yalnızca İK · kilitli ay açılamaz · kimse kendi kaydında işlem yapamaz (görevler ayrılığı) · her kullanıcı yalnızca rolünün izin verdiği satırları görür (RLS).
 
 | Migration | İçerik |
 |---|---|
@@ -104,6 +104,9 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261117010000_kiosk_kaldir.sql` | Şema düzenlemesi: PIN alanları ve ilgili fonksiyonlar |
 | `20261117020000_gecici_kart.sql` | Geçici kart ve zimmet, güvenlik rolü, geçici kart uyarıları |
 | `20261117030000_kart_paylasimi.sql` | Kart paylaşımı şüphe kuralı |
+| `20261118010000_sema_temizligi.sql` | Tablo açıklamaları ve ayar geçmişi düzenlemesi |
+| `20261118020000_gorevler_ayriligi.sql` | Kullanıcı ↔ çalışan bağı, "kimse kendi kaydında işlem yapamaz" kuralları |
+| `20261118030000_giris_ve_yetki.sql` | Supabase Auth bağlantısı, RLS politikaları, görünüm yetkileri |
 
 ---
 
@@ -151,11 +154,13 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 
 | Parça | Durum |
 |---|---|
-| Veritabanı şeması, kurallar, roller (26 test) | ✅ |
+| Veritabanı şeması ve kurallar (27 test) | ✅ |
 | Fazla mesai (34 test) | ✅ |
 | Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ |
-| Giriş ve yetki: Supabase Auth, RLS politikaları (amir, İK, güvenlik, yönetici) | ⬜ Yapılacak |
+| Giriş ve yetki: Supabase Auth bağlantısı, RLS politikaları (24 test) | ✅ |
+| Görevler ayrılığı: kimse kendi kaydında işlem yapamaz (20 test) | ✅ |
+| Ekran fonksiyonları (RPC): soru cevaplama, itiraz, geçici kart, İK kararları | ⬜ Yapılacak |
 | Next.js iskeleti (TypeScript, Tailwind CSS, shadcn/ui, supabase-js) | ⬜ Yapılacak |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |

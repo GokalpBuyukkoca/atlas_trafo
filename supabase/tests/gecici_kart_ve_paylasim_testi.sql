@@ -29,8 +29,6 @@ create function test.k(p text) returns bigint language sql as $$ select id from 
 create function test.c(p text) returns bigint language sql as $$ select id from pdks.calisan where sicil_no = p $$;
 create function test.g(p text) returns bigint language sql as $$ select id from pdks.gecici_kart where kart_no = p $$;
 create function test.uyari_sayisi(p_tur text) returns bigint language sql as $$ select count(*) from pdks.uyari where tur = p_tur $$;
-grant usage on schema test to pdks_uygulama, pdks_gece_isi;
-grant execute on all functions in schema test to pdks_uygulama, pdks_gece_isi;
 
 set timezone = 'Europe/Istanbul';
 
@@ -61,7 +59,6 @@ select test.hata_bekle('geçici kart numarası asıl kartla aynı olamaz',
 select test.hata_bekle('asıl kart numarası geçici kartla aynı olamaz',
     $$insert into pdks.kart (kart_no, calisan_id) values ('GK-01', test.c('1008'))$$);
 
-set role pdks_uygulama;
 select test.hata_bekle('amir geçici kart veremez',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('GK-01'), test.c('1001'), '2026-11-10 07:50+03', test.k('amir@ornek.test'))$$);
@@ -93,19 +90,16 @@ select test.hata_bekle('iade edilmiş zimmet değiştirilemez',
 select test.hata_bekle('geriye dönük çakışan zimmet girilemez',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('GK-01'), test.c('1002'), '2026-11-10 12:00+03', test.k('guvenlik@ornek.test'))$$);
-reset role;
 
-select test.hata_bekle('zimmet postgres için bile silinemez',
+select test.hata_bekle('zimmet tablo sahibi için bile silinemez',
     $$delete from pdks.gecici_kart_zimmet$$);
 select test.hata_bekle('zimmet tablosu boşaltılamaz (TRUNCATE)',
     $$truncate pdks.gecici_kart_zimmet$$);
 
 update pdks.gecici_kart set durum = 'kayip' where kart_no = 'GK-04';
-set role pdks_uygulama;
 select test.hata_bekle('kayıp geçici kart verilemez',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('GK-04'), test.c('1003'), '2026-11-11 07:00+03', test.k('guvenlik@ornek.test'))$$);
-reset role;
 
 select test.dogrula('okutma sahibi: zimmet içindeki geçici kart → çalışan',
     pdks.okutma_sahibi('GK-01', '2026-11-10 10:00+03') = test.c('1001'));
@@ -127,7 +121,6 @@ values ((select id from pdks.aktarim where kaynak = 'kapi'), (select id from pdk
         'kapi', 'K1001', '2026-11-10 12:00+03', 'giris');   -- A'nın asıl kartı, geçici kart zimmetliyken
 
 -- C'ye 11 Kasım'da verilip iade edilmeyen kart; D'ye ayda 3 kez kart
-set role pdks_uygulama;
 insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
 values (test.g('GK-03'), test.c('1003'), '2026-11-11 07:00+03', test.k('guvenlik@ornek.test'));
 insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id, iade_zamani, iade_alan_id)
@@ -143,9 +136,7 @@ insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani,
 values (test.g('GK-02'), test.c('1004'), '2026-11-04 07:00+03', test.k('guvenlik@ornek.test'));
 update pdks.gecici_kart_zimmet set iade_zamani = '2026-11-04 17:00+03', iade_alan_id = test.k('guvenlik@ornek.test')
 where calisan_id = test.c('1004') and iade_zamani is null;
-reset role;
 
-set role pdks_gece_isi;
 select pdks.gecici_kart_kontrol('2026-11-10');
 select test.dogrula('geçici kart zimmetliyken asıl kart okutuldu → İK''ya uyarı',
     test.uyari_sayisi('gecici_kart_cakisma') = 1);
@@ -160,9 +151,8 @@ select test.dogrula('iade edilmeyen geçici kart → İK''ya uyarı',
 select pdks.gecici_kart_kontrol('2026-11-04');
 select test.dogrula('ayda 3 geçici kart alan çalışan → bilgi uyarısı',
     exists (select 1 from pdks.uyari where tur = 'sik_kart_unutma' and calisan_id = test.c('1004')));
-select test.dogrula('gece işi zimmet yazamaz (yalnızca okur)',
-    not has_table_privilege('pdks_gece_isi', 'pdks.gecici_kart_zimmet', 'insert'));
-reset role;
+select test.dogrula('uygulama (authenticated) zimmete doğrudan yazamaz',
+    not has_table_privilege('authenticated', 'pdks.gecici_kart_zimmet', 'insert'));
 
 -- =====================================================================
 -- B) KART PAYLAŞIMI ŞÜPHESİ
@@ -187,7 +177,6 @@ from (
     select '2026-11-16', k, s from (values ('K1003', '07:55:00+03'), ('K1004', '07:55:01+03')) v(k, s)
 ) x;
 
-set role pdks_gece_isi;
 select test.dogrula('kart paylaşımı şüphesi: tek çift için tek uyarı',
     pdks.kart_paylasim_kontrol('2026-11-30') = 1);
 select test.dogrula('şüpheli çift 1005–1006',
@@ -203,14 +192,11 @@ select test.dogrula('tekrar çalıştırınca uyarı çoğalmıyor',
     pdks.kart_paylasim_kontrol('2026-11-30') = 0 and test.uyari_sayisi('kart_paylasim_suphesi') = 1);
 select test.dogrula('kart paylaşımı günlük kaydı değiştirmedi (ceza yok)',
     not exists (select 1 from pdks.gun_kaydi) and not exists (select 1 from pdks.duzeltme));
-reset role;
 
 update pdks.ayar set deger = 4 where anahtar = 'kart_paylasim_gun';
-set role pdks_gece_isi;
 select pdks.kart_paylasim_kontrol('2026-11-30');
 select test.dogrula('eşik ayardan değişince (4 gün) 1007–1008 da uyarı aldı',
     exists (select 1 from pdks.uyari where tur = 'kart_paylasim_suphesi' and calisan_id = test.c('1007')));
-reset role;
 
 select test.dogrula('pdks fonksiyonlarının hiçbiri herkese (PUBLIC) açık değil',
     not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
