@@ -71,6 +71,19 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 | `ariza_karar` | `p_ariza_id`, `p_onay` | Sistemin şüphe olarak açtığı arızayı onaylar/reddeder |
 | `ay_kilitle` | `p_yil`, `p_ay`, `p_zorla?` | Ayı kilitler ve puantajı dondurur. Açık soru/itiraz varsa kilitlemez |
 | `dosya_yukle` | `p_kaynak`, `p_dosya_adi`, `p_veri_tarihi`, `p_satirlar` | CSV'den okunan satırları yükler; aktarım no döner |
+| `gece_isi_tetikle` | `p_baslangic`, `p_bitis?` | **Demo düğmesi.** Tarih aralığını gün gün gece işinden geçirir (en fazla 62 gün). Her gün için `gun`, `durum` (`basarili` / `hatali`), `ozet`, `hata_mesaji` satırı döner. Verisi yüklenmemiş gün işlenmez |
+
+### `gece_isi_tetikle` (demo)
+
+Gece işi normalde her gece 06:30'da kendiliğinden çalışır (pg_cron). Demoda İK ekranındaki düğme örnek ayı tek seferde işletir:
+
+```ts
+const { data, error } = await supabase.schema('pdks')
+  .rpc('gece_isi_tetikle', { p_baslangic: '2026-11-01', p_bitis: '2026-11-30' })
+// data: [{ gun: '2026-11-01', durum: 'basarili', ozet: { gun_kaydi: 31, soru: 0, ... }, hata_mesaji: null }, ...]
+```
+
+Tekrar çalıştırmak güvenlidir; var olan kayıtlar bozulmaz, yalnızca eksikler eklenir. Son çalışmanın durumu `v_gece_isi_durumu` görünümünden okunur.
 
 ### `dosya_yukle` satır biçimi
 

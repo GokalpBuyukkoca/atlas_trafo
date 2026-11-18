@@ -136,7 +136,9 @@ select test.oturum('00000000-0000-0000-0000-000000000012');
 select test.dogrula('yönetici tüm gün kayıtlarını görür', (select count(*) from pdks.gun_kaydi) = (select gun from toplam));
 select test.dogrula('yönetici yıllık fazla mesai görünümünü sınırla birlikte görür',
     (select count(*) = 2 and bool_and(kalan_dk = pdks.ayar_al('fm_yillik_sinir_dk') - 60)
-     from pdks.v_fazla_mesai_yillik));
+     from pdks.v_fazla_mesai_yillik
+     -- yalnızca testin kendi çalışanları (örnek veri yüklüyken başka satırlar da olur)
+     where calisan_id in (test.c('R01'), test.c('R03'))));
 select test.hata_bekle('yönetici hiçbir şey yazamaz',
     $$update pdks.calisan set ad = 'X' where sicil_no = 'R01'$$);
 
