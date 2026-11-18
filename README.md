@@ -60,10 +60,12 @@ atlas_trafo/
 ├─ CLAUDE.md                 # Claude Code için proje kuralları
 ├─ .env.example              # ortam değişkenleri şablonu (değersiz)
 ├─ docs/
-│  └─ veritabani.md          # veritabanı dokümanı ve ER diyagramı
+│  ├─ veritabani.md          # veritabanı dokümanı ve ER diyagramı
+│  └─ ornek_veri.md          # örnek verideki kişiler, demo hesapları ve senaryolar
 ├─ supabase/
 │  ├─ config.toml            # Supabase CLI ayarları
 │  ├─ migrations/            # sıra numaralı veritabanı değişiklikleri (mevcutlar asla değiştirilmez)
+│  ├─ seed.sql               # örnek (sahte) veri: Kasım 2026
 │  └─ tests/                 # SQL kural testleri
 └─ .github/workflows/        # PR yetki koruması
 ```
@@ -125,13 +127,14 @@ cp .env.example .env.local          # değerleri Supabase > Project Settings > A
 # 3) Veritabanı (tek kişi, bir kez)
 supabase link --project-ref <proje-kodu>
 supabase db push                    # supabase/migrations altındaki dosyaları sırayla kurar
+psql "$SUPABASE_DB_URL" -f supabase/seed.sql   # örnek veri (bkz. docs/ornek_veri.md)
 
 # 4) Uygulama (Next.js iskeleti eklendikten sonra)
 npm install
 npm run dev                         # http://localhost:3000
 ```
 
-**Testler:** `supabase/tests` altındaki her dosya `psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f <dosya>` ile çalıştırılır; sonda "... GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz.
+**Testler:** `supabase/tests` altındaki her dosya `psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f <dosya>` ile çalıştırılır; sonda "... GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz ve örnek veri yüklü olsa da olmasa da çalışır. `ornek_veri_testi.sql` örnek verinin yüklü olmasını bekler.
 
 ---
 
@@ -165,7 +168,7 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
 | Saatlik izin | ⬜ Yapılacak |
-| Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
+| Örnek veri: Kasım 2026, 31 çalışan, 23 senaryo (37 test) | ✅ |
 | CSV içe aktarma (Papa Parse) | ⬜ Yapılacak |
 | Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ⬜ Yapılacak |
 | Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |

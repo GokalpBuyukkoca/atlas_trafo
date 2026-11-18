@@ -72,7 +72,8 @@ insert into pdks.gecici_kart (kart_no) values ('R-GK1');
 
 -- Sayımlar (sahibin gözünden)
 create temp table toplam as
-select (select count(*) from pdks.calisan) as calisan, (select count(*) from pdks.gun_kaydi) as gun;
+select (select count(*) from pdks.calisan) as calisan, (select count(*) from pdks.gun_kaydi) as gun,
+       (select count(*) from pdks.gecici_kart) as gecici_kart;
 grant select on toplam to authenticated;
 
 -- 1) Yapı ---------------------------------------------------------------------
@@ -131,7 +132,7 @@ select test.dogrula('amir geçici kartları göremez', (select count(*) from pdk
 -- 5) Güvenlik: çalışan listesi ve geçici kartlar ----------------------------
 select test.oturum('00000000-0000-0000-0000-000000000031');
 select test.dogrula('güvenlik çalışan listesini görür', (select count(*) from pdks.calisan) = (select calisan from toplam));
-select test.dogrula('güvenlik geçici kartları görür', (select count(*) from pdks.gecici_kart) = 1);
+select test.dogrula('güvenlik geçici kartları görür', (select count(*) from pdks.gecici_kart) = (select gecici_kart from toplam));
 select test.dogrula('güvenlik gün kayıtlarını, düzeltmeleri ve izinleri göremez',
     (select count(*) from pdks.gun_kaydi) = 0 and (select count(*) from pdks.duzeltme) = 0
     and (select count(*) from pdks.izin) = 0 and (select count(*) from pdks.v_izin_amir) = 0);
