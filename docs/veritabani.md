@@ -1,9 +1,21 @@
 # Veritabanı Tasarımı (Supabase / PostgreSQL)
 
-Veritabanı **Supabase** (bulutta PostgreSQL).
-Tüm tablolar `pdks` adlı şemada durur. Supabase'in otomatik REST API'si yalnızca `public` şemasını
-açtığı için tablolarımız internete açılmaz. Streamlit uygulaması ve gece işi veritabanına kendi
-kullanıcılarıyla doğrudan bağlanır.
+Veritabanı **Supabase** (bulutta PostgreSQL). Tüm tablolar `pdks` adlı şemada durur.
+İş kuralları (gece işi, düzeltme, görevler ayrılığı, ay kilidi) PostgreSQL fonksiyonları ve trigger'lar
+olarak veritabanının içinde çalışır.
+
+## Erişim modeli
+
+- **Giriş:** Supabase Auth. Her kullanıcının `pdks.kullanici` satırı `auth_kullanici_id` sütunuyla
+  Supabase Auth kullanıcısına bağlanır. Rol `kullanici.rol` sütunundadır: `amir`, `ik`, `guvenlik`, `yonetici`.
+- **Yetki:** Her tabloda RLS (satır düzeyinde güvenlik) açıktır. Politikalar oturumdaki kullanıcının rolüne
+  bakar. Örneğin amir yalnızca kendi departmanının sorularını görür, güvenlik yalnızca geçici kart ekranını kullanır.
+- **Veri bağlantısı:** Next.js uygulaması supabase-js ile bağlanır. Okuma sorgu oluşturucusuyla, kural içeren
+  her yazma işlemi veritabanı fonksiyonu üzerinden RPC ile yapılır (ör. `pdks.duzeltme_uygula`).
+- **Gece işi:** pg_cron her gece veritabanı içinde çalıştırır; demoda ekrandaki buton aynı fonksiyonu RPC ile tetikler.
+
+> **RLS** = "bu kullanıcı bu satırı görebilir mi?" sorusunu her sorguda veritabanının kendisinin sorması.
+> **RPC** = uygulamanın, veritabanındaki bir fonksiyonu adıyla çağırması.
 
 ## Dosyalar
 
@@ -44,7 +56,7 @@ kullanıcılarıyla doğrudan bağlanır.
    gelen düzeltme sonraki açık aya `fark_satiri = true` olarak yazılır. Puantaj (`puantaj_satiri`)
    yalnızca kilitli aya yazılır ve sonra değiştirilemez.
 7. **Puantaj gün ve dakika olarak tutulur.**
-8. **Gizli bilgiler korunur.** Şifreler bcrypt özeti olarak saklanır. Veritabanı şifreleri koda değil `.env`'ye.
+8. **Gizli bilgiler korunur.** Kullanıcı şifrelerini Supabase Auth saklar. Anahtarlar ve bağlantı adresleri koda değil `.env.local`'e ve Vercel ortam değişkenlerine yazılır.
 
 ## Sorun → tablo eşlemesi
 
@@ -65,7 +77,7 @@ kullanıcılarıyla doğrudan bağlanır.
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
 | 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
 | 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
-| 15 Bordro aktarımı | `puantaj_satiri`; CSV'yi Python üretir |
+| 15 Bordro aktarımı | `puantaj_satiri`; Excel dosyasını uygulama SheetJS ile üretir |
 | 17 Çalışan kendi kaydını göremiyor | Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
@@ -223,40 +235,50 @@ Süreler dakika olarak tutulur. Plansız ya da planı aşan çalışmayı gece i
 
 ## Gece işi akışı (veritabanı açısından)
 
-1. Dosyaları `aktarim` + `ham_okutma` / `kanit_kaydi` tablolarına yükle (aynı dosya ikinci kez reddedilir).
-2. Mükerrer, iptal kart, bilinmeyen kart okutmalarını `okutma_isareti` ile işaretle.
-3. Her çalışan için vardiya penceresine göre `gun_kaydi` oluştur (saatler yalnızca PDKS'den).
-4. Eksikleri kanıtla düzelt: `select pdks.duzeltme_uygula(...)`. Kanıt vardiya başından sonraysa düzeltme yapma, `amir_sorusu` aç.
-5. Süresi geçen soruları `eskale` et, uyarıları yaz, `gece_isi` satırını `basarili` yap.
+1. Dosyalar ekrandan yüklenir; Papa Parse ile okunur ve `aktarim` + `ham_okutma` / `kanit_kaydi` tablolarına yazılır (aynı dosya ikinci kez reddedilir).
+2. Gece işi fonksiyonu mükerrer, iptal kart, bilinmeyen kart okutmalarını `okutma_isareti` ile işaretler.
+3. Her çalışan için vardiya penceresine göre `gun_kaydi` oluşturur (saatler yalnızca PDKS'den).
+4. Eksikleri kanıtla düzeltir: `pdks.duzeltme_uygula(...)`. Kanıt vardiya başından sonraysa düzeltme yapmaz, `amir_sorusu` açar.
+5. Süresi geçen soruları `eskale` eder, uyarıları yazar, `gece_isi` satırını `basarili` yapar.
 
-Örnek düzeltme (Python'da parametreli sorgu, `psycopg`):
+pg_cron bu fonksiyonu her gece çalıştırır. Demoda aynı fonksiyon ekrandaki butonla RPC üzerinden tetiklenir.
 
-```python
-cur.execute(
-    "select pdks.duzeltme_uygula(%s, 'giris_zamani', %s, %s, 'gece_isi', p_kanit_kaydi_id => %s)",
-    (gun_kaydi_id, "2026-11-13 08:00+03", "Kapı kaydı 07:50, vardiya öncesi", kanit_id),
-)
+Örnek: ekrandan bir veritabanı fonksiyonunu çağırmak (supabase-js, TypeScript):
+
+```ts
+const { data, error } = await supabase
+  .schema('pdks')
+  .rpc('duzeltme_uygula', {
+    p_gun_kaydi_id: gunKaydiId,
+    p_alan: 'giris_zamani',
+    p_yeni_deger: '2026-11-13 08:00+03',
+    p_gerekce: 'Amir onayı: kart okutmayı unuttu',
+    p_kaynak: 'amir',
+    p_yapan_id: kullaniciId,
+    p_soru_id: soruId,
+  })
 ```
+
+Değerler fonksiyona parametre olarak gider; kullanıcı girdisi SQL metnine eklenmez.
 
 ## Kurulum (Supabase)
 
 1. supabase.com'da proje aç.
-2. **SQL Editor**'de `supabase/migrations` altındaki 4 dosyayı sırayla çalıştır
-   (ya da Supabase CLI ile: `supabase link` → `supabase db push`).
-3. Rollere şifre ver (şifreyi kimseyle paylaşma, repoya yazma):
-   ```sql
-   alter role pdks_uygulama with login password 'GÜÇLÜ_BİR_ŞİFRE';
-   alter role pdks_gece_isi with login password 'BAŞKA_GÜÇLÜ_ŞİFRE';
+2. Supabase CLI ile migration dosyalarını sırayla kur:
+   ```bash
+   supabase link --project-ref <proje-kodu>
+   supabase db push
    ```
-4. Bağlantı bilgisini **Project Settings → Database → Connection string** kısmından al.
-   Pooler kullanılıyorsa kullanıcı adı `pdks_uygulama.<proje-kodu>` biçimindedir.
-5. `.env.example` dosyasını `.env` olarak kopyalayıp bilgileri doldur. `.env` zaten `.gitignore`'da.
-6. Testleri çalıştır: `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/<dosya>.sql` (her test dosyası için)
+3. **Database → Extensions** bölümünden `pg_cron` eklentisini aç.
+4. **Project Settings → API** bölümünde `pdks` şemasını **Exposed schemas** listesine ekle.
+5. **Project Settings → API Keys** bölümünden proje adresini ve anahtarları al; `.env.example` dosyasını
+   `.env.local` olarak kopyalayıp doldur. `.env.local` zaten `.gitignore`'da.
+6. Testleri çalıştır: `psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/<dosya>.sql` (her test dosyası için).
    Sonda `TÜM TESTLER GEÇTİ` görmelisin.
 
 ## Bilinçli tercihler
 
 - Değerler için enum yerine `text + check` kullandık: okunması ve yeni değer eklemesi daha kolay.
 - `vardiya_plani` ve `izin` değiştirilebilir; bunların etkisi `gun_kaydi`'na yine `duzeltme` üzerinden yansır.
-- Uygulama girişi (amir/İK/güvenlik) karar bekliyor. Öneri: `kullanici` tablosunda bcrypt ile şifre.
-- Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak Python'un işi; veritabanı yalnızca kuralları korur.
+- Giriş Supabase Auth ile yapılır; rol `kullanici.rol` sütunundan okunur ve RLS politikalarında kullanılır.
+- Fark satırındaki dakika farkını hesaplamak ve puantajı yazmak veritabanı fonksiyonlarının işidir; ekran yalnızca sonucu gösterir ve dışa aktarır.

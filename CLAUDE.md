@@ -10,9 +10,14 @@ Claude Code bu dosyayı her oturumda okur. Buradaki kurallar her istekte geçerl
 - Çalışan aleyhine karar (devamsızlık, itiraz reddi, kart paylaşımı) her zaman İK'dadır (KVKK m.11).
 - Biyometri kullanma; akıllı telefon varsayma (KVKK ve proje kararı).
 - Veritabanı: Supabase (PostgreSQL). Tüm tablolar `pdks` şemasında (28 tablo). Ayrıntı: `docs/veritabani.md`.
+- İş kuralları veritabanındadır: PostgreSQL fonksiyonları ve trigger'lar (gece işi, düzeltme, görevler ayrılığı, ay kilidi).
+- Giriş ve yetki: Supabase Auth + RLS. Roller: `amir`, `ik`, `guvenlik`, `yonetici` (`kullanici.rol`).
 - Çalışan isterse İK sistemden PDF döküm verir; itirazı amir ya da İK girer.
 - Kart unutana güvenlikten zimmetli geçici kart (`gecici_kart`, `gecici_kart_zimmet`).
-- Uygulama: Python + Streamlit. Raporlama: Power BI ya da Streamlit (karar bekliyor).
+- Frontend: Next.js + TypeScript, Tailwind CSS + shadcn/ui. Veri bağlantısı: supabase-js; fonksiyonlar RPC ile çağrılır.
+- CSV okuma: Papa Parse · PDF döküm: @react-pdf/renderer · Excel çıktısı: SheetJS.
+- Gece işi pg_cron ile her gece çalışır; demoda ekrandaki butonla da tetiklenir. Yayın: Vercel.
+- Raporlama: Power BI ya da Streamlit (karar bekliyor).
 
 ## 2. Değişmez veritabanı kuralları
 - `ham_okutma`, `kanit_kaydi`, `aktarim`, `okutma_isareti` değiştirilemez ve silinemez.
@@ -28,10 +33,12 @@ Claude Code bu dosyayı her oturumda okur. Buradaki kurallar her istekte geçerl
 - Her yeni kural için `supabase/tests/` altına test eklenir; testler sonda ROLLBACK ile iz bırakmaz.
 
 ## 4. Güvenlik (asla ihlal etme)
-- `.env` ve `.env.*` dosyaları okunmaz, yazdırılmaz, commit edilmez (`.env.example` hariç).
+- `.env` ve `.env.*` dosyaları (`.env.local` dahil) okunmaz, yazdırılmaz, commit edilmez (`.env.example` hariç).
 - Şifre, bağlantı adresi veya anahtar koda, loglara, ekran çıktısına yazılmaz.
 - Repoda yalnızca sahte (sentetik) veri olur; gerçek Atlas Trafo verisi asla.
-- SQL her zaman parametreli yazılır; kullanıcı girdisi SQL metnine eklenmez.
+- Kullanıcı girdisi SQL metnine eklenmez; veritabanına supabase-js sorgu oluşturucusu ve RPC ile erişilir.
+- `SUPABASE_SECRET_KEY` yalnızca sunucu tarafı kodda kullanılır; `NEXT_PUBLIC_` öneki almaz, tarayıcıya gönderilmez.
+- Her yeni tabloda RLS açılır ve rol bazlı politika yazılır; yetki kontrolü yalnızca ekrana bırakılmaz.
 - Supabase'e veya herhangi bir canlı veritabanına Fırat'ın açık onayı olmadan komut çalıştırılmaz.
 - `main` dalına ve başkasının dalına push yapılmaz.
 
@@ -41,7 +48,7 @@ Claude Code bu dosyayı her oturumda okur. Buradaki kurallar her istekte geçerl
 - Commit ve push öncesi Fırat'a ne değiştiğini göster ve onay al.
 
 ## 6. Fırat ile çalışma şekli (öğreterek ilerle)
-Fırat YBS 3. sınıf; SQL'de JOIN ve GROUP BY biliyor, Python'da yeni. Her adımda:
+Fırat YBS 3. sınıf; SQL'de JOIN ve GROUP BY biliyor, TypeScript ve Next.js'te yeni. Her adımda:
 1. Ne yapacağını önce 2-3 cümleyle anlat.
 2. Yeni kavramları sade dille, ilk kez gören birine anlatır gibi açıkla.
 3. Kodu tamamen sen yaz (süre kısa); her dosyadan sonra önemli satırları sade dille açıkla.

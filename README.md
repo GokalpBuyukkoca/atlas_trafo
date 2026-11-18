@@ -19,7 +19,7 @@ Bu sistem mevcut PDKS'yi **değiştirmez**, kayıtlarını alıp yanında çalı
 4. **Kanıt yoksa** ertesi sabah amire sorar. Cevapsız soru 3 gün sonra üst amire ve İK'ya gider.
 5. Her düzeltme kim / ne zaman / eski-yeni değer / gerekçe / dayanak ile **silinemeyen** bir tabloya yazılır.
 6. Fazla mesaide yazılı onay, günlük 11 saat ve yıllık 270 saat sınırlarını denetler.
-7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika) CSV olarak alınır.
+7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika) Excel olarak alınır.
 
 ### Temel kararlar
 - **Çalışan aleyhine her karar İK'dadır** (KVKK m.11): devamsızlık, itirazın reddi, kart paylaşımı, plansız fazla mesai. Sistem en fazla "şüphe" ya da "uyarı" üretir.
@@ -36,18 +36,19 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 
 | Katman | Teknoloji | Not |
 |---|---|---|
-| Veritabanı | **Supabase (PostgreSQL)** | Tüm tablolar `pdks` şemasında; şema internete (Supabase API'ye) kapalı. Kurallar trigger ve fonksiyonlarla veritabanının içinde |
-| Veritabanı dili | SQL, PL/pgSQL | Değişiklikler sıra numaralı migration dosyalarıyla |
-| Şifreleme | pgcrypto (bcrypt) | Şifreler açık metin saklanmaz |
-| Uygulama | **Python + Streamlit** | Amir ve İK ekranları |
-| Veri işleme | pandas | Tablolar, CSV çıktısı |
-| Veritabanı bağlantısı | psycopg | Doğrudan bağlantı; iki kısıtlı rol: `pdks_uygulama` (ekranlar), `pdks_gece_isi` (gece işi) |
-| Gizli bilgiler | python-dotenv + `.env` | `.env` asla GitHub'a gitmez |
-| Gece işi | Python betiği | Sunumda ekrandaki "Şimdi çalıştır" butonuyla; gerçek kullanımda sunucuda her gece zamanlanmış görev |
-| PDF döküm | fpdf2 *(eklenecek)* | Çalışan kayıt dökümü |
-| Test | SQL testleri (`supabase/tests`), pytest *(gece işiyle)* | SQL testleri sonda ROLLBACK ile iz bırakmaz |
+| Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 28 tablo |
+| İş kuralları | PostgreSQL fonksiyonları ve trigger'lar | Gece işi, düzeltme, görevler ayrılığı, ay kilidi veritabanının içinde çalışır; ekran atlansa bile kural delinemez |
+| Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
+| Frontend | **Next.js + TypeScript** | Tailwind CSS + shadcn/ui |
+| Veri bağlantısı | supabase-js | Veritabanı fonksiyonları RPC ile çağrılır |
+| CSV okuma | Papa Parse | PDKS, kapı, yemekhane, servis dosyaları |
+| PDF döküm | @react-pdf/renderer | Çalışanın kayıt dökümü |
+| Excel çıktısı | SheetJS | Bordroya hazır puantaj |
+| Gece işi zamanlama | pg_cron | Her gece kendiliğinden çalışır; demoda ekrandaki butonla da tetiklenir |
+| Test | SQL testleri (`supabase/tests`) | Testler sonda ROLLBACK ile iz bırakmaz |
 | Raporlama | Power BI — **karar bekliyor** | Power BI Desktop yalnızca Windows'ta çalışır; zorunlu değilse grafikler Streamlit'te |
-| Araçlar | Git, GitHub, GitHub Actions, Supabase CLI, psql, Claude Code | |
+| Yayın | Vercel | |
+| Kod | GitHub | |
 
 ---
 
@@ -56,19 +57,24 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 ```
 atlas_trafo/
 ├─ README.md
-├─ .env.example              # bağlantı bilgisi şablonu (şifresiz)
-├─ requirements.txt          # Python paketleri
+├─ CLAUDE.md                 # Claude Code için proje kuralları
+├─ .env.example              # ortam değişkenleri şablonu (değersiz)
 ├─ docs/
 │  └─ veritabani.md          # veritabanı dokümanı ve ER diyagramı
 ├─ supabase/
+│  ├─ config.toml            # Supabase CLI ayarları
 │  ├─ migrations/            # sıra numaralı veritabanı değişiklikleri (mevcutlar asla değiştirilmez)
 │  └─ tests/                 # SQL kural testleri
-├─ web/                      # Streamlit uygulaması
-│  ├─ app.py
-│  ├─ veri.py                # veri katmanı (şimdilik örnek veri)
-│  └─ sayfalar/              # amir.py, ik.py
-├─ scripts/                  # yardımcı betikler (bağlantı testi vb.)
 └─ .github/workflows/        # PR yetki koruması
+```
+
+Next.js uygulaması eklendiğinde planlanan yapı:
+
+```
+├─ package.json
+├─ app/                      # sayfalar: giriş, amir, İK, güvenlik
+├─ components/               # arayüz bileşenleri (shadcn/ui)
+└─ lib/supabase/             # tarayıcı ve sunucu için Supabase istemcileri
 ```
 
 ---
@@ -101,59 +107,83 @@ atlas_trafo/
 
 ---
 
-## 5. Kurulum ve çalıştırma
+## 5. Yerelde çalıştırma
+
+**Gerekenler:** Node.js 20 veya üstü, npm, [Supabase CLI](https://supabase.com/docs/guides/cli), psql.
 
 ```bash
-# 1) Python ortamı
-python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# 1) Repoyu indir
+git clone https://github.com/frt-ekc/atlas_trafo.git
+cd atlas_trafo
 
-# 2) Bağlantı bilgileri
-cp .env.example .env                 # değerleri Supabase > Project Settings > Database'den doldurun
+# 2) Ortam değişkenleri
+cp .env.example .env.local          # değerleri Supabase > Project Settings > API Keys'ten doldurun
 
-# 3) Ekranlar
-streamlit run web/app.py
+# 3) Veritabanı (tek kişi, bir kez)
+supabase link --project-ref <proje-kodu>
+supabase db push                    # supabase/migrations altındaki dosyaları sırayla kurar
+
+# 4) Uygulama (Next.js iskeleti eklendikten sonra)
+npm install
+npm run dev                         # http://localhost:3000
 ```
 
-**Veritabanı kurulumu (tek kişi, bir kez):** Supabase SQL Editor'de `supabase/migrations` altındaki dosyalar **sırayla** çalıştırılır; ardından rollere şifre verilir (bkz. `docs/veritabani.md`).
-
-**Testler:** `supabase/tests` altındaki her dosya `psql "$PDKS_ADMIN_DB_URL" -v ON_ERROR_STOP=1 -f <dosya>` ile çalıştırılır; sonda "... GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz.
+**Testler:** `supabase/tests` altındaki her dosya `psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f <dosya>` ile çalıştırılır; sonda "... GEÇTİ" yazmalı. Testler veritabanında iz bırakmaz.
 
 ---
 
-## 6. Durum ve yol haritası
+## 6. Ortam değişkenleri
+
+`.env.example` dosyası `.env.local` olarak kopyalanır ve doldurulur. `.env.local` GitHub'a gitmez.
+
+| Değişken | Ne işe yarar | Nerede kullanılır |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase proje adresi | Tarayıcı ve sunucu |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yayınlanabilir anahtar; neyin görüneceğini RLS belirler | Tarayıcı ve sunucu |
+| `SUPABASE_SECRET_KEY` | Gizli anahtar; RLS'yi atlar. İK'nın kullanıcı hesabı açması gibi sunucu işlerinde | **Yalnızca sunucu** (`NEXT_PUBLIC_` öneki almaz) |
+| `SUPABASE_DB_URL` | Veritabanına doğrudan bağlantı | Yalnızca geliştirici bilgisayarı (testler) |
+
+Vercel'de ilk üç değişken **Project Settings → Environment Variables** bölümüne girilir.
+
+---
+
+## 7. Durum ve yol haritası
 
 | Parça | Durum |
 |---|---|
 | Veritabanı şeması, kurallar, roller (26 test) | ✅ |
-| Amir ve İK ekranları | ✅ Örnek veriyle |
-| Fazla mesai (34 test) + bağlantı testi | ✅ |
+| Fazla mesai (34 test) | ✅ |
+| Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ |
+| Giriş ve yetki: Supabase Auth, RLS politikaları (amir, İK, güvenlik, yönetici) | ⬜ Yapılacak |
+| Next.js iskeleti (TypeScript, Tailwind CSS, shadcn/ui, supabase-js) | ⬜ Yapılacak |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
-| Güvenlik ekranı (geçici kart ver / iade al) | ⬜ Yapılacak |
-| Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Saatlik izin | ⬜ Yapılacak |
 | Sahte veri (çalışan, okutma, bilerek konmuş hatalar) | ⬜ Yapılacak |
-| Gece işi (içe aktarma → işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) | ⬜ Yapılacak |
-| Ekranların veritabanına bağlanması | ⬜ Yapılacak |
-| Giriş (amir, İK, güvenlik) | ⬜ Yapılacak |
-| Ay kilidi, bordro CSV, çalışan PDF dökümü | ⬜ Yapılacak |
+| CSV içe aktarma (Papa Parse) | ⬜ Yapılacak |
+| Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ⬜ Yapılacak |
+| Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |
+| İK ekranı (uyarılar, kararlar, ay kilidi) | ⬜ Yapılacak |
+| Güvenlik ekranı (geçici kart ver / iade al) | ⬜ Yapılacak |
+| Bordro Excel çıktısı (SheetJS), çalışan PDF dökümü (@react-pdf/renderer) | ⬜ Yapılacak |
+| Vercel'de yayın | ⬜ Yapılacak |
 | Raporlama (Power BI veya Streamlit) | ⬜ Karar bekliyor |
 | Rapor diyagramları (Use Case, DFD, AS-IS, TO-BE) | ⬜ Yapılacak |
 
-**Karar bekleyenler:** Power BI zorunlu mu · amir/İK ekranlara nasıl giriş yapacak (öneri: `kullanici` tablosunda bcrypt şifre).
+**Karar bekleyenler:** Power BI zorunlu mu.
 
 ---
 
-## 7. Çalışma kuralları
+## 8. Çalışma kuralları
 
 - `main` korumalıdır; doğrudan push yapılmaz. PR'ları birleştirme, kapatma, etiketleme ve atama yalnızca ekip liderindedir (otomasyonla korunur).
 - Her iş için dal: `feature/<issue-no>-kisa-ad`. Her iş bir issue olarak açılır.
 - Her PR en az 1 onay alır.
 - Commit mesajları Türkçe ve kısa: `feat(db): ...`, `fix: ...`, `docs: ...`, `test: ...`.
 - `supabase/migrations` altındaki mevcut dosyalar **asla değiştirilmez**; her değişiklik yeni numaralı dosyadır ve testiyle gelir.
-- Gizli bilgiler (şifre, bağlantı adresi) koda, loglara, ekran görüntülerine yazılmaz; yalnızca `.env` dosyasında tutulur.
-- SQL her zaman parametreli yazılır.
+- Gizli bilgiler (şifre, anahtar, bağlantı adresi) koda, loglara, ekran görüntülerine yazılmaz; yalnızca `.env.local` dosyasında ve Vercel ortam değişkenlerinde tutulur.
+- `SUPABASE_SECRET_KEY` yalnızca sunucu tarafı kodda kullanılır, tarayıcıya gönderilmez.
+- Her tabloda RLS açıktır; yetki kontrolü veritabanında yapılır.
+- Kullanıcı girdisi SQL metnine eklenmez; veritabanına supabase-js sorgu oluşturucusu ve RPC ile erişilir.
 - Ekran görüntülerinde çalışan adları ve sicil numaraları bulanıklaştırılır.
