@@ -61,7 +61,8 @@ atlas_trafo/
 ├─ .env.example              # ortam değişkenleri şablonu (değersiz)
 ├─ docs/
 │  ├─ veritabani.md          # veritabanı dokümanı ve ER diyagramı
-│  └─ ornek_veri.md          # örnek verideki kişiler, demo hesapları ve senaryolar
+│  ├─ ornek_veri.md          # örnek verideki kişiler, demo hesapları ve senaryolar
+│  └─ ekran_fonksiyonlari.md # ekranların çağırdığı RPC fonksiyonları (parametreler, örnekler)
 ├─ supabase/
 │  ├─ config.toml            # Supabase CLI ayarları
 │  ├─ migrations/            # sıra numaralı veritabanı değişiklikleri (mevcutlar asla değiştirilmez)
@@ -109,6 +110,8 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261118010000_sema_temizligi.sql` | Tablo açıklamaları ve ayar geçmişi düzenlemesi |
 | `20261118020000_gorevler_ayriligi.sql` | Kullanıcı ↔ çalışan bağı, "kimse kendi kaydında işlem yapamaz" kuralları |
 | `20261118030000_giris_ve_yetki.sql` | Supabase Auth bağlantısı, RLS politikaları, görünüm yetkileri |
+| `20261118040000_ayar_al_yetkisi.sql` | `ayar_al()` sahibinin yetkisiyle çalışır, `authenticated` çalıştırabilir |
+| `20261119010000_ekran_fonksiyonlari.sql` | Ekranların çağırdığı 22 RPC fonksiyonu (amir, güvenlik, İK) |
 
 ---
 
@@ -161,9 +164,9 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Fazla mesai (34 test) | ✅ |
 | Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ |
-| Giriş ve yetki: Supabase Auth bağlantısı, RLS politikaları (24 test) | ✅ |
+| Giriş ve yetki: Supabase Auth bağlantısı, RLS politikaları (29 test) | ✅ |
 | Görevler ayrılığı: kimse kendi kaydında işlem yapamaz (20 test) | ✅ |
-| Ekran fonksiyonları (RPC): soru cevaplama, itiraz, geçici kart, İK kararları | ⬜ Yapılacak |
+| Ekran fonksiyonları (RPC): soru cevaplama, itiraz, geçici kart, İK kararları, dosya yükleme (42 test) | ✅ |
 | Next.js iskeleti (TypeScript, Tailwind CSS, shadcn/ui, supabase-js) | ⬜ Yapılacak |
 | Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
 | Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
