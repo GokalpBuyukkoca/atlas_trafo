@@ -88,9 +88,12 @@ select test.kural_hatasi('soru, sorunun sahibine eskale edilemez', 'Görevler ay
     $$update pdks.amir_sorusu set eskale_edilen_id = test.k('ali@ornek.test')
       where gun_kaydi_id = test.g('GA21')$$);
 update pdks.kullanici set ust_amir_id = null where eposta = 'ali@ornek.test';
-select test.kural_hatasi('üst amiri yoksa kendi sorusu açılamaz', 'üst amiri tanımlı değil',
-    $$insert into pdks.amir_sorusu (gun_kaydi_id, soru_turu, aciklama, atanan_id, son_cevap_tarihi)
-      values (test.g('GA21'), 'cikis_yok', 'Ali''nin çıkışı', test.k('ali@ornek.test'), '2026-11-17')$$);
+-- Üst amiri yoksa kendi sorusu İK'ya gider (20261120010000_gece_isi.sql ile değişti; önceden hata veriyordu)
+insert into pdks.amir_sorusu (gun_kaydi_id, soru_turu, aciklama, atanan_id, son_cevap_tarihi)
+values (test.g('GA21'), 'cikis_yok', 'Ali''nin çıkışı', test.k('ali@ornek.test'), '2026-11-17');
+select test.dogrula('üst amiri yoksa kendi sorusu İK''ya gider',
+    (select pdks.kullanici_rolu(atanan_id) = 'ik' from pdks.amir_sorusu
+     where gun_kaydi_id = test.g('GA21') and soru_turu = 'cikis_yok'));
 insert into pdks.amir_sorusu (gun_kaydi_id, soru_turu, aciklama, atanan_id, son_cevap_tarihi)
 values (test.g('GA01'), 'cikis_yok', 'Ahmet''in çıkışı', test.k('ali@ornek.test'), '2026-11-17');
 select test.dogrula('amir, ekibindeki çalışanın sorusuna atanabiliyor',

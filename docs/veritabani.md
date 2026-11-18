@@ -36,7 +36,10 @@ olarak veritabanının içinde çalışır.
 | `supabase/migrations/20261118030000_giris_ve_yetki.sql` | Oturum fonksiyonları, `authenticated` okuma yetkisi, RLS politikaları, görünüm ayarları |
 | `supabase/migrations/20261118040000_ayar_al_yetkisi.sql` | `ayar_al()` sahibinin yetkisiyle çalışır, `authenticated` çalıştırabilir (`v_fazla_mesai_yillik` düzeltmesi) |
 | `supabase/migrations/20261119010000_ekran_fonksiyonlari.sql` | Ekranların çağırdığı 22 RPC fonksiyonu; ayrıntı: [ekran_fonksiyonlari.md](ekran_fonksiyonlari.md) |
+| `supabase/migrations/20261119010000_ekran_fonksiyonlari.sql` | Ekranların yazma işlemleri için RPC fonksiyonları (ayrıntı: `docs/ekran_fonksiyonlari.md`) |
+| `supabase/migrations/20261120010000_gece_isi.sql` | Gece işi (`gece_isi_calistir`), demo düğmesi (`gece_isi_tetikle`), pg_cron zamanlaması; üst amiri olmayan amirin kendi sorusu İK'ya gider |
 | `supabase/tests/kurallar_testi.sql` | 27 kural testi (her şeyi geri alır, iz bırakmaz) |
+| `supabase/tests/gece_isi_testi.sql` | Gece işi: 23 mekanik test (her zaman) + örnek veri yüklüyse S1–S23 senaryoları (26 test) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
 | `supabase/tests/gorevler_ayriligi_testi.sql` | Görevler ayrılığı için 20 test |
@@ -256,13 +259,23 @@ Süreler dakika olarak tutulur. Plansız ya da planı aşan çalışmayı gece i
 
 ## Gece işi akışı (veritabanı açısından)
 
-1. Dosyalar ekrandan yüklenir; Papa Parse ile okunur ve `aktarim` + `ham_okutma` / `kanit_kaydi` tablolarına yazılır (aynı dosya ikinci kez reddedilir).
-2. Gece işi fonksiyonu mükerrer, iptal kart, bilinmeyen kart okutmalarını `okutma_isareti` ile işaretler.
-3. Her çalışan için vardiya penceresine göre `gun_kaydi` oluşturur (saatler yalnızca PDKS'den).
-4. Eksikleri kanıtla düzeltir: `pdks.duzeltme_uygula(...)`. Kanıt vardiya başından sonraysa düzeltme yapmaz, `amir_sorusu` açar.
-5. Süresi geçen soruları `eskale` eder, uyarıları yazar, `gece_isi` satırını `basarili` yapar.
+Dosyalar ekrandan yüklenir (`dosya_yukle`; aynı dosya ikinci kez reddedilir). Ardından `pdks.gece_isi_calistir(gün)` sırasıyla:
 
-pg_cron bu fonksiyonu her gece çalıştırır. Demoda aynı fonksiyon ekrandaki butonla RPC üzerinden tetiklenir.
+1. **İşaretleme:** mükerrer, iptal kart (+ `iptal_kart_okutma` uyarısı) ve okutma anında kimseye ait olmayan kart okutmalarını `okutma_isareti` ile işaretler. İşaretli okutmalar hesaba girmez.
+2. **Gün kaydı:** vardiya planı olan herkese, vardiya penceresindeki ilk giriş ve son çıkışla `gun_kaydi` açar (saatler yalnızca PDKS'den; geçici kart okutmaları `okutma_sahibi()` ile doğru kişiye). İzin → `izinli` / `raporlu`, resmi tatil → `tatil`.
+3. **Arıza şüphesi:** aynı gün bir PDKS okuyucusunda "PDKS okutması yok ama kapı kaydı var" durumundaki kişi sayısı `ayar.ariza_suphe_kisi`'ye ulaşırsa ve okuyucu o aralıkta sessizse `ariza` (`otomatik_suphe`) ve `ariza_suphesi` uyarısı.
+4. **Kanıtla düzeltme:** giriş kanıtı (kapı, yoksa servis) + yürüme payı vardiya başından önceyse giriş = vardiya başı; çıkışta kanıttaki saat. Her düzeltme `duzeltme_uygula()` ile, kanıt ve varsa arıza dayanağıyla.
+5. **Amire soru:** kanıt yoksa `giris_yok` / `cikis_yok`, hiçbir iz yoksa `hic_kayit_yok`, giriş kanıtı vardiya başından sonraysa `kanit_vardiya_sonrasi` (öneri: kanıt + yürüme payı). Soru departman amirine (izinliyse vekiline) gider; amirin kendi kaydıysa üst amirine, üst amiri yoksa İK'ya.
+6. **Eskalasyon:** son cevap tarihi geçen açık soru üst amire (yoksa İK'ya) gider; `soru_eskale` uyarısı.
+7. **Hesap:** giriş ve çıkışı belli, açık sorusu olmayan günlerde geç kalma, erken çıkış (toleranslarla), çalışma dakikası ve onaylı plan kadar fazla mesai; `hesap_tamam = true`.
+8. **Uyarılar:** `fm_plansiz_calisma`, `fm_onay_yok`, `fm_gunluk_sinir_asildi`, `dosya_gelmedi`; geçici kart (`gecici_kart_kontrol`) ve kart paylaşımı (`kart_paylasim_kontrol`).
+
+Sistem devamsızlık kararı vermez; en fazla soru ve uyarı üretir.
+
+- **Tekrar çalıştırmak güvenlidir:** var olan kayıt bozulmaz, yalnızca eksikler eklenir. Bir adımda hata olursa o günün hiçbir değişikliği kalmaz; `gece_isi` satırı `hatali` olur ve hata mesajı saklanır.
+- **Veri tamlığı:** vardiya penceresi ertesi güne taşıyorsa (V2, V3) o günün PDKS dosyası gelmeden gün kaydı açılmaz ve soru sorulmaz.
+- **Zamanlama:** pg_cron her gece 06:30'da (03:30 UTC) önceki günü ve dünü işler.
+- **Demo:** İK, `gece_isi_tetikle(başlangıç, bitiş)` ile bir tarih aralığını tek seferde işletir.
 
 Örnek: ekrandan bir veritabanı fonksiyonunu çağırmak (supabase-js, TypeScript):
 
