@@ -36,8 +36,6 @@ create function test.p(p_sicil text, p_gun date) returns bigint language sql as 
     select id from pdks.fazla_mesai_plani
     where calisan_id = test.c(p_sicil) and is_gunu = p_gun
     order by id desc limit 1 $$;
-grant usage on schema test to pdks_uygulama, pdks_gece_isi;
-grant execute on all functions in schema test to pdks_uygulama, pdks_gece_isi;
 
 set timezone = 'Europe/Istanbul';
 
@@ -58,7 +56,6 @@ from unnest(array['FM01', 'FM02']) s,
 insert into pdks.vardiya_plani (calisan_id, tarih, vardiya_id)
 values (test.c('FM01'), '2026-12-04', (select id from pdks.vardiya_tanim where kod = 'V3'));
 
-set role pdks_uygulama;
 
 -- 1) Yıllık yazılı onay ---------------------------------------------------
 select test.hata_bekle('amir yazılı onay giremez',
@@ -137,8 +134,6 @@ select test.hata_bekle('fazla mesai planı silinemez',
     $$delete from pdks.fazla_mesai_plani where id = test.p('FM01', '2026-12-01')$$);
 
 -- 4) Gerçekleşen fazla mesai (gece işi yazar) -----------------------------
-reset role;
-set role pdks_gece_isi;
 insert into pdks.gun_kaydi (calisan_id, is_gunu, vardiya_id, durum, fazla_mesai_dk)
 values (test.c('FM01'), '2026-12-01', (select id from pdks.vardiya_tanim where kod = 'GUNDUZ'), 'eksik', 90);
 select test.dogrula('onaylı plan içindeki 90 dk yazıldı',
@@ -159,8 +154,6 @@ select test.dogrula('yıllık görünüm: onaylı 240, gerçekleşen 90, kalan 6
      from pdks.v_fazla_mesai_yillik where calisan_id = test.c('FM01') and yil = 2026));
 
 -- 5) Onayın geri alınması -------------------------------------------------
-reset role;
-set role pdks_uygulama;
 -- Çalışan 10 Kasım'da bildirdi: 30 gün sonra (10 Aralık) onay geçersiz
 update pdks.fazla_mesai_onayi
 set geri_alma_bildirim_tarihi = '2026-11-10', geri_alma_giren_id = test.k('fm_ik@ornek.test')
@@ -185,6 +178,5 @@ select test.hata_bekle('geri alınmış onay tekrar değiştirilemez',
 select test.hata_bekle('geçerli onay varken kişisiz iptal yapılamaz',
     $$update pdks.fazla_mesai_plani set durum = 'iptal' where id = test.p('FM01', '2026-12-03')$$);
 
-reset role;
 do $$ begin raise notice 'FAZLA MESAİ TESTLERİ GEÇTİ'; end $$;
 rollback;

@@ -25,8 +25,6 @@ begin
     if p_kosul is not true then raise exception 'KALDI  %', p_ad; end if;
     raise notice 'GEÇTİ  %', p_ad;
 end $$;
-grant usage on schema test to pdks_uygulama, pdks_gece_isi;
-grant execute on all functions in schema test to pdks_uygulama, pdks_gece_isi;
 
 set timezone = 'Europe/Istanbul';
 
@@ -48,16 +46,18 @@ values (1, 1, 'K1001', '2026-11-13 17:02+03', 'cikis');
 insert into pdks.kanit_kaydi (aktarim_id, okuyucu_id, kaynak, kart_no, okutma_zamani, yon)
 values (2, 2, 'kapi', 'K1001', '2026-11-13 07:50+03', 'giris');
 
--- Gece işi rolüyle günlük kaydı oluştur (sorun 1: giriş yok)
-set role pdks_gece_isi;
+-- Günlük kaydı oluştur (sorun 1: giriş yok)
 insert into pdks.gun_kaydi (calisan_id, is_gunu, vardiya_id, cikis_zamani, cikis_kaynagi, durum)
 values (1, '2026-11-13', 1, '2026-11-13 17:02+03', 'pdks', 'eksik');
 
 -- 1) Ham kayıt değiştirilemez / silinemez ------------------------------
-select test.hata_bekle('ham_okutma UPDATE yetkisi yok', $$update pdks.ham_okutma set kart_no = 'X'$$);
-select test.hata_bekle('ham_okutma DELETE yetkisi yok', $$delete from pdks.ham_okutma$$);
+grant usage on schema test to authenticated;
+grant execute on all functions in schema test to authenticated;
+set role authenticated;
+select test.hata_bekle('uygulama (authenticated) ham_okutma UPDATE yetkisi yok', $$update pdks.ham_okutma set kart_no = 'X'$$);
+select test.hata_bekle('uygulama (authenticated) ham_okutma DELETE yetkisi yok', $$delete from pdks.ham_okutma$$);
 reset role;
-select test.hata_bekle('ham_okutma UPDATE postgres için bile trigger ile engelli',
+select test.hata_bekle('ham_okutma UPDATE tablo sahibi için bile trigger ile engelli',
                        $$update pdks.ham_okutma set kart_no = 'X'$$);
 select test.hata_bekle('aynı dosya iki kez yüklenemez (sorun 16)',
     $$insert into pdks.aktarim (kaynak, dosya_adi, dosya_ozeti, veri_tarihi)
@@ -67,7 +67,6 @@ select test.hata_bekle('aynı okutma iki kez eklenemez',
       values (1, 1, 'K1001', '2026-11-13 17:02+03')$$);
 
 -- 2) İzsiz düzeltme imkânsız -------------------------------------------
-set role pdks_gece_isi;
 select test.hata_bekle('giriş saati doğrudan UPDATE edilemez',
     $$update pdks.gun_kaydi set giris_zamani = '2026-11-13 08:00+03' where id = 1$$);
 select test.hata_bekle('gece işi kanıtsız düzeltme yapamaz',
@@ -83,12 +82,10 @@ select test.dogrula('günlük kayıt güncellendi, kaynak=kanit',
     (select giris_zamani = '2026-11-13 08:00+03' and giris_kaynagi = 'kanit' from pdks.gun_kaydi where id = 1));
 select test.hata_bekle('düzeltme izi UPDATE edilemez', $$update pdks.duzeltme set gerekce = 'değişti'$$);
 select test.hata_bekle('düzeltme izi DELETE edilemez', $$delete from pdks.duzeltme$$);
-reset role;
-select test.hata_bekle('düzeltme izi postgres için bile silinemez', $$delete from pdks.duzeltme$$);
+select test.hata_bekle('düzeltme izi tablo sahibi için bile silinemez', $$delete from pdks.duzeltme$$);
 select test.hata_bekle('düzeltme izi TRUNCATE edilemez', $$truncate pdks.duzeltme cascade$$);
 
 -- 3) Çalışan aleyhine karar yalnızca İK ---------------------------------
-set role pdks_uygulama;
 select test.hata_bekle('amir devamsız kararı veremez',
     $$select pdks.duzeltme_uygula(1, 'durum', 'devamsiz', 'Amir gelmedi dedi', 'amir', 1)$$);
 select test.hata_bekle('amir kendini İK diye gösteremez',
@@ -101,10 +98,8 @@ select test.dogrula('İK kararı aleyhine olarak işaretlendi',
     (select calisan_aleyhine from pdks.duzeltme where alan = 'durum'));
 
 -- Amir "gelmedi" derse soru İK'ya gider
-reset role;
 insert into pdks.amir_sorusu (gun_kaydi_id, soru_turu, aciklama, atanan_id, son_cevap_tarihi)
 values (1, 'giris_yok', 'Giriş yok, kanıt yok', 1, '2026-11-17');
-set role pdks_uygulama;
 update pdks.amir_sorusu set cevap = 'gelmedi', cevaplayan_id = 1 where id = 1;
 select test.dogrula('amir "gelmedi" deyince soru İK kararına düştü',
     (select durum = 'ik_karari_bekliyor' from pdks.amir_sorusu where id = 1));
@@ -134,7 +129,6 @@ select test.dogrula('ayar değişikliği geçmişe yazıldı',
     exists (select 1 from pdks.ayar_gecmisi where anahtar = 'yurume_payi_dk' and eski_deger = 5 and yeni_deger = 10));
 
 -- 6) API rolleri (Supabase) erişemez ------------------------------------
-reset role;
 do $$
 begin
     if exists (select 1 from pg_roles where rolname = 'anon') then
