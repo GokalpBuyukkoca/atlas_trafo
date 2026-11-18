@@ -62,6 +62,7 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 | `kayit_duzelt` | `p_gun_kaydi_id`, `p_alan`, `p_yeni_deger`, `p_gerekce`, `p_itiraz_id?`, `p_izin_id?` | Gün kaydında tek alanı düzeltir (`giris_zamani`, `cikis_zamani`, `durum` …); düzeltme no döner |
 | `vardiya_plani_onayla` | `p_plan_id`, `p_onay` | Geçmişe dönük vardiya planını onaylar/reddeder; planı giren kişi onaylayamaz |
 | `izin_gir` | `p_calisan_id`, `p_tur`, `p_baslangic`, `p_bitis`, `p_aciklama?` | İzin kaydı girer |
+| `izin_iptal` | `p_izin_id`, `p_neden` | Yanlış girilen izni iptal eder (silmez; kim/ne zaman/neden tutulur). İznin bir günü gece işinden "izinli/raporlu" olarak geçmişse reddeder: o günler `kayit_duzelt` ile düzeltilir. İK kendi iznini iptal edemez |
 | `fazla_mesai_karar` | `p_plan_id`, `p_onay`, `p_aciklama?` | Fazla mesai talebini onaylar/reddeder |
 | `fazla_mesai_onayi_gir` | `p_calisan_id`, `p_yil`, `p_imza_tarihi`, `p_belge_no` | Çalışanın yıllık yazılı fazla mesai onayını kaydeder |
 | `fazla_mesai_onayi_geri_al` | `p_onay_id`, `p_bildirim_tarihi` | Çalışan onayını geri çektiğinde kaydeder |
@@ -115,4 +116,16 @@ const { data } = await supabase.schema('pdks')
   .in('durum', ['acik', 'eskale'])
 ```
 
-İzin listesi için amir `v_izin_amir` görünümünü kullanır (izin türü gizlidir).
+İzin listesi için amir `v_izin_amir` görünümünü kullanır (izin türü gizlidir; iptal edilen izinler görünmez).
+
+**İK `izin` tablosunu doğrudan okuyorsa iptal edilen izinleri süzmelidir:**
+
+```ts
+await supabase.schema('pdks').from('izin').select('*').is('iptal_zamani', null)
+```
+
+Yönetici paneli için `v_departman_ozet` görünümü ay ve departman başına özet verir: `calisan_sayisi`, `calisilan_gun`, `devamsiz_gun`, `gec_kalinan_gun`, `gec_kalma_dk`, `erken_cikis_dk`, `fazla_mesai_dk`, `bekleyen_gun`, `acik_soru`, `acik_itiraz`. İK ve yönetici tüm departmanları, amir yalnızca kendi departmanını görür.
+
+```ts
+await supabase.schema('pdks').from('v_departman_ozet').select('*').eq('yil', 2026).eq('ay', 11)
+```
