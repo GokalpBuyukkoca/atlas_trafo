@@ -8,5 +8,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Next.js dosyaları ve görseller hariç her yol
-  matcher: ["/((?!_next/static|_next/image|icon.png|logo/|.*\\.(?:png|jpg|jpeg|svg|ico|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|icon.png|logo/|fonts/|.*\\.(?:png|jpg|jpeg|svg|ico|webp|ttf)$).*)"],
 };

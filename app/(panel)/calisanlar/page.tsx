@@ -116,7 +116,13 @@ export default async function CalisanlarSayfasi({ searchParams }: PageProps<"/ca
               {calisanlar.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-mono tabular-nums">{c.sicil_no}</TableCell>
-                  <TableCell className="font-medium">{c.ad} {c.soyad}</TableCell>
+                  <TableCell className="font-medium">
+                    {kullanici.rol === "guvenlik" ? (
+                      `${c.ad} ${c.soyad}`
+                    ) : (
+                      <Link href={`/calisanlar/${c.id}`} className="underline-offset-4 hover:underline">{c.ad} {c.soyad}</Link>
+                    )}
+                  </TableCell>
                   <TableCell>{c.departman?.ad ?? "—"}</TableCell>
                   <TableCell className="tabular-nums">{tarih(c.ise_giris_tarihi)}</TableCell>
                   <TableCell>

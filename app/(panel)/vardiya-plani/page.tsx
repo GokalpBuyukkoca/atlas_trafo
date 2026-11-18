@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Secim } from "@/components/panel/secim";
+import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
 import { tekDeger } from "@/lib/arama";
 import { bolumNumarasi, gorunurBolumler } from "@/lib/bolumler";
 import { bugun, gecerliTarihMi, gunEkle, haftaBasi, haftaBasligi, haftaninGunleri } from "@/lib/hafta";
@@ -18,15 +19,6 @@ type Plan = { calisan_id: number; tarih: string; vardiya_id: number; geriye_donu
 type Izin = { calisan_id: number; tur: string; baslangic: string; bitis: string };
 type FazlaMesai = { calisan_id: number; is_gunu: string; planli_dk: number; durum: string };
 type Vardiya = { id: number; kod: string; ad: string; baslangic: string; bitis: string };
-
-// Vardiyalar renkle ayrılır; renk tek başına anlam taşımasın diye hücrede kod da yazar.
-const VARDIYA_RENGI: Record<string, string> = {
-  GUNDUZ: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
-  V1: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  V2: "bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200",
-  V3: "bg-slate-800 text-slate-50 dark:bg-slate-700",
-};
-const VARDIYA_KISA: Record<string, string> = { GUNDUZ: "Gündüz" };
 
 // İzin türü sağlık verisi içerebilir (rapor). Türü yalnızca İK görür; diğerleri "İzinli" görür.
 const IZIN_TURU: Record<string, string> = {
@@ -250,20 +242,6 @@ export default async function VardiyaPlaniSayfasi({ searchParams }: PageProps<"/
         </ul>
       </section>
     </div>
-  );
-}
-
-function VardiyaEtiketi({ kod, ustuCizili = false }: { kod: string; ustuCizili?: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex min-w-14 justify-center rounded px-1.5 py-0.5 text-xs font-semibold",
-        VARDIYA_RENGI[kod] ?? "bg-secondary text-secondary-foreground",
-        ustuCizili && "line-through opacity-60",
-      )}
-    >
-      {VARDIYA_KISA[kod] ?? kod}
-    </span>
   );
 }
 

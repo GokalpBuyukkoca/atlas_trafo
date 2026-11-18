@@ -1,27 +1,300 @@
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ROL_ADI, oturumKullanicisi, type Rol } from "@/lib/oturum";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
+import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
+import { tarih, tarihSaat, uzunTarih } from "@/lib/bicim";
+import { bugun } from "@/lib/hafta";
+import { ROL_ADI, oturumKullanicisi } from "@/lib/oturum";
+import { tumSatirlar } from "@/lib/supabase/sayfali";
+import { sunucuIstemcisi } from "@/lib/supabase/server";
 
-const ROL_ACIKLAMASI: Record<Rol, string> = {
-  amir: "Bölümünüzde kanıt bulunamayan kayıtlar için gelen soruları cevaplar, çalışan itirazlarını girersiniz.",
-  ik: "Uyarıları ve itirazları sonuçlandırır, ayı kilitler, puantajı alırsınız.",
-  guvenlik: "Kartını unutan çalışana geçici kart verir, iadesini alırsınız.",
-  yonetici: "Fabrika genelindeki kayıtları ve raporları görürsünüz (yalnızca okuma).",
-};
+type Istemci = Awaited<ReturnType<typeof sunucuIstemcisi>>;
+type SayimYaniti = { count: number | null; error: { message: string } | null };
+
+// Satırları indirmeden yalnızca sayısını alır (count + head). 2000 kişide de hızlıdır.
+// Hangi satırların sayılacağına yine RLS karar verir.
+async function say(sorgu: PromiseLike<SayimYaniti>, ne: string): Promise<number> {
+  const { count, error } = await sorgu;
+  if (error) throw new Error(`${ne} sayılamadı: ${error.message}`);
+  return count ?? 0;
+}
+
+const SAYIM = { count: "exact", head: true } as const;
+const IADE_SURESI_SAAT = 16; // ayar: gecici_kart_iade_saat (güvenlik ayar tablosunu okuyamaz)
 
 export default async function AnaSayfa() {
   // Layout zaten kontrol etti; cache() sayesinde veritabanına tekrar gidilmez.
   const kullanici = await oturumKullanicisi();
   if (!kullanici) return null;
 
+  const supabase = await sunucuIstemcisi();
+  const bugunTarih = bugun();
+
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Hoş geldiniz, {kullanici.adSoyad}</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>{ROL_ADI[kullanici.rol]}</CardTitle>
-          <CardDescription>{ROL_ACIKLAMASI[kullanici.rol]}</CardDescription>
-        </CardHeader>
-      </Card>
+    <div className="flex max-w-6xl flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Hoş geldiniz, {kullanici.adSoyad}</h1>
+        <p className="text-sm text-muted-foreground">
+          {uzunTarih(bugunTarih)} · {ROL_ADI[kullanici.rol]}
+        </p>
+      </div>
+
+      {(kullanici.rol === "ik" || kullanici.rol === "yonetici") && (
+        <IkOzeti supabase={supabase} bugunTarih={bugunTarih} saltOkur={kullanici.rol === "yonetici"} />
+      )}
+      {kullanici.rol === "amir" && <AmirOzeti supabase={supabase} bugunTarih={bugunTarih} />}
+      {kullanici.rol === "guvenlik" && <GuvenlikOzeti supabase={supabase} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// İK ve yönetici: fabrika geneli. Yönetici aynı sayıları görür ama karar vermez.
+// ---------------------------------------------------------------------
+async function IkOzeti({ supabase, bugunTarih, saltOkur }: { supabase: Istemci; bugunTarih: string; saltOkur: boolean }) {
+  const [
+    ikKarariBekleyenSoru,
+    acikSoru,
+    acikItiraz,
+    gorulmemisUyari,
+    vardiyaOnayi,
+    fmTalebi,
+    acikZimmet,
+    bugunIzinli,
+    ilkBekleyenPlan,
+    sonGeceIsi,
+  ] = await Promise.all([
+    say(supabase.from("amir_sorusu").select("id", SAYIM).eq("durum", "ik_karari_bekliyor"), "Sorular"),
+    say(supabase.from("amir_sorusu").select("id", SAYIM).in("durum", ["acik", "eskale"]), "Sorular"),
+    say(supabase.from("itiraz").select("id", SAYIM).in("durum", ["acik", "inceleniyor"]), "İtirazlar"),
+    say(supabase.from("uyari").select("id", SAYIM).eq("goruldu", false), "Uyarılar"),
+    say(supabase.from("vardiya_plani").select("id", SAYIM).eq("ik_onay_durumu", "bekliyor"), "Vardiya onayları"),
+    say(supabase.from("fazla_mesai_plani").select("id", SAYIM).eq("durum", "talep"), "Fazla mesai talepleri"),
+    say(supabase.from("gecici_kart_zimmet").select("id", SAYIM).is("iade_zamani", null), "Zimmetler"),
+    say(
+      supabase.from("izin").select("id", SAYIM).lte("baslangic", bugunTarih).gte("bitis", bugunTarih),
+      "İzinler",
+    ),
+    supabase.from("vardiya_plani").select("tarih").eq("ik_onay_durumu", "bekliyor").order("tarih").limit(1).maybeSingle(),
+    supabase.from("gece_isi").select("islenen_gun, durum, bitis, hata_mesaji").order("baslangic", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  const geceIsi = sonGeceIsi.data as { islenen_gun: string; durum: string; bitis: string | null; hata_mesaji: string | null } | null;
+  const ilkPlanTarihi = (ilkBekleyenPlan.data as { tarih: string } | null)?.tarih;
+  const geceIsiYok = !geceIsi;
+  const bekliyorMetni = saltOkur ? "İK kararı bekliyor" : "Kararınızı bekliyor";
+
+  return (
+    <>
+      {geceIsiYok && (
+        <Alert>
+          <AlertTitle>Gece işi henüz hiç çalışmadı</AlertTitle>
+          <AlertDescription>
+            Günlük kayıtlar, amir soruları ve uyarılar gece işi çalışınca oluşur. O zamana kadar bu sayılar sıfır görünür.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <section aria-labelledby="bekleyen-baslik" className="flex flex-col gap-3">
+        <h2 id="bekleyen-baslik" className="text-lg font-semibold">Bekleyen işler</h2>
+        <OzetIzgarasi>
+          <OzetKarti
+            baslik="Geriye dönük vardiya değişikliği"
+            deger={vardiyaOnayi}
+            aciklama={vardiyaOnayi ? bekliyorMetni : "Bekleyen yok"}
+            href={ilkPlanTarihi ? `/vardiya-plani?hafta=${ilkPlanTarihi}` : "/vardiya-plani"}
+            ton={vardiyaOnayi ? "dikkat" : "notr"}
+          />
+          <OzetKarti
+            baslik="Fazla mesai talebi"
+            deger={fmTalebi}
+            aciklama={fmTalebi ? bekliyorMetni : "Bekleyen yok"}
+            href="/fazla-mesai?durum=talep"
+            ton={fmTalebi ? "dikkat" : "notr"}
+          />
+          <OzetKarti
+            baslik="İK kararı bekleyen kayıt"
+            deger={ikKarariBekleyenSoru}
+            aciklama="Amirin 'gelmedi' dediği ya da cevapsız kalan günler"
+            href="/sorular?durum=ik"
+            ton={ikKarariBekleyenSoru ? "dikkat" : "notr"}
+          />
+          <OzetKarti
+            baslik="Açık itiraz"
+            deger={acikItiraz}
+            aciklama={acikItiraz ? "Sonuçlandırılmayı bekliyor" : "Açık itiraz yok"}
+            href="/itirazlar"
+            ton={acikItiraz ? "dikkat" : "notr"}
+          />
+        </OzetIzgarasi>
+      </section>
+
+      <section aria-labelledby="durum-baslik" className="flex flex-col gap-3">
+        <h2 id="durum-baslik" className="text-lg font-semibold">Bugün</h2>
+        <OzetIzgarasi>
+          <OzetKarti baslik="İzinli çalışan" deger={bugunIzinli} aciklama={tarih(bugunTarih)} href={`/vardiya-plani?hafta=${bugunTarih}`} />
+          <OzetKarti
+            baslik="Dışarıdaki geçici kart"
+            deger={acikZimmet}
+            aciklama={acikZimmet ? "İade edilmedi" : "Bütün kartlar güvenlikte"}
+            href="/gecici-kartlar"
+          />
+          <OzetKarti
+            baslik="Amirlerde bekleyen soru"
+            deger={acikSoru}
+            aciklama="Kanıt bulunamayan kayıtlar"
+            href="/sorular?durum=bekleyen"
+          />
+          <OzetKarti
+            baslik="Görülmemiş uyarı"
+            deger={gorulmemisUyari}
+            aciklama="Arıza, dosya gelmedi, kart paylaşımı şüphesi…"
+            href="/uyarilar"
+            ton={gorulmemisUyari ? "dikkat" : "notr"}
+          />
+        </OzetIzgarasi>
+        {geceIsi && (
+          <p className="text-sm text-muted-foreground">
+            Son gece işi: {tarih(geceIsi.islenen_gun)} günü ·{" "}
+            {geceIsi.durum === "basarili"
+              ? `başarılı (${tarihSaat(geceIsi.bitis)})`
+              : geceIsi.durum === "calisiyor"
+                ? "şu an çalışıyor"
+                : `hata verdi${geceIsi.hata_mesaji ? `: ${geceIsi.hata_mesaji}` : ""}`}
+          </p>
+        )}
+      </section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Amir: kendi bölümleri (RLS süzer)
+// ---------------------------------------------------------------------
+type BugunPlan = { calisan_id: number; vardiya: { kod: string; baslangic: string } | null };
+
+async function AmirOzeti({ supabase, bugunTarih }: { supabase: Istemci; bugunTarih: string }) {
+  const [bekleyenSoru, acikItiraz, fmTalebi, planlar, izinliler] = await Promise.all([
+    say(supabase.from("amir_sorusu").select("id", SAYIM).in("durum", ["acik", "eskale"]), "Sorular"),
+    say(supabase.from("itiraz").select("id", SAYIM).in("durum", ["acik", "inceleniyor"]), "İtirazlar"),
+    say(supabase.from("fazla_mesai_plani").select("id", SAYIM).eq("durum", "talep"), "Fazla mesai talepleri"),
+    tumSatirlar<BugunPlan>((bas, son) =>
+      supabase
+        .from("vardiya_plani")
+        .select("calisan_id, vardiya:vardiya_id(kod, baslangic)")
+        .eq("tarih", bugunTarih)
+        .order("id")
+        .range(bas, son),
+    ),
+    tumSatirlar<{ calisan_id: number }>((bas, son) =>
+      supabase
+        .from("v_izin_amir")
+        .select("calisan_id")
+        .lte("baslangic", bugunTarih)
+        .gte("bitis", bugunTarih)
+        .order("id")
+        .range(bas, son),
+    ),
+  ]);
+
+  // Bugün izinli olanlar çalışan sayısından düşülür
+  const izinliIdler = new Set(izinliler.map((i) => i.calisan_id));
+  const vardiyaSayilari = new Map<string, { baslangic: string; sayi: number }>();
+  for (const p of planlar) {
+    if (!p.vardiya || izinliIdler.has(p.calisan_id)) continue;
+    const s = vardiyaSayilari.get(p.vardiya.kod) ?? { baslangic: p.vardiya.baslangic, sayi: 0 };
+    s.sayi += 1;
+    vardiyaSayilari.set(p.vardiya.kod, s);
+  }
+  const vardiyalar = [...vardiyaSayilari.entries()].sort((a, b) => a[1].baslangic.localeCompare(b[1].baslangic));
+  const calisacak = vardiyalar.reduce((t, [, s]) => t + s.sayi, 0);
+
+  return (
+    <>
+      <section aria-labelledby="bekleyen-baslik" className="flex flex-col gap-3">
+        <h2 id="bekleyen-baslik" className="text-lg font-semibold">Bekleyen işler</h2>
+        <OzetIzgarasi>
+          <OzetKarti
+            baslik="Cevap bekleyen soru"
+            deger={bekleyenSoru}
+            aciklama={bekleyenSoru ? "Cevapsız soru 3 gün sonra üst amire ve İK'ya gider" : "Bekleyen soru yok"}
+            ton={bekleyenSoru ? "dikkat" : "notr"}
+            href="/sorular"
+          />
+          <OzetKarti
+            baslik="Fazla mesai talebiniz"
+            deger={fmTalebi}
+            aciklama={fmTalebi ? "İK kararı bekliyor" : "Bekleyen talep yok"}
+            href="/fazla-mesai?durum=talep"
+          />
+          <OzetKarti baslik="Açık itiraz" deger={acikItiraz} aciklama="Bölümünüzdeki çalışanların itirazları" href="/itirazlar" />
+        </OzetIzgarasi>
+      </section>
+
+      <section aria-labelledby="ekip-baslik" className="flex flex-col gap-3">
+        <h2 id="ekip-baslik" className="text-lg font-semibold">Bugün ekibiniz</h2>
+        <OzetIzgarasi>
+          <OzetKarti
+            baslik="Planlı çalışan"
+            deger={calisacak}
+            aciklama={
+              vardiyalar.length ? (
+                <span className="flex flex-wrap gap-1.5 pt-1">
+                  {vardiyalar.map(([kod, s]) => (
+                    <span key={kod} className="inline-flex items-center gap-1">
+                      <VardiyaEtiketi kod={kod} /> <span className="tabular-nums">{s.sayi}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                "Bugün planlı vardiya yok"
+              )
+            }
+            href={`/vardiya-plani?hafta=${bugunTarih}`}
+          />
+          <OzetKarti baslik="İzinli" deger={izinliIdler.size} aciklama={tarih(bugunTarih)} href={`/vardiya-plani?hafta=${bugunTarih}`} />
+        </OzetIzgarasi>
+      </section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Güvenlik: geçici kartlar
+// ---------------------------------------------------------------------
+// Şimdiki zamana bakan hesap bileşenin dışında durur (bileşenler saf olmalı).
+function gecikenIadeSayisi(zimmetler: { verilis_zamani: string }[]): number {
+  const simdi = Date.now();
+  return zimmetler.filter((z) => simdi - new Date(z.verilis_zamani).getTime() > IADE_SURESI_SAAT * 3600_000).length;
+}
+
+async function GuvenlikOzeti({ supabase }: { supabase: Istemci }) {
+  const [kartSonucu, zimmetSonucu] = await Promise.all([
+    supabase.from("gecici_kart").select("id, durum"),
+    supabase.from("gecici_kart_zimmet").select("gecici_kart_id, verilis_zamani").is("iade_zamani", null),
+  ]);
+  if (kartSonucu.error) throw new Error(`Geçici kartlar okunamadı: ${kartSonucu.error.message}`);
+  if (zimmetSonucu.error) throw new Error(`Zimmetler okunamadı: ${zimmetSonucu.error.message}`);
+
+  const kartlar = kartSonucu.data ?? [];
+  const zimmetler = zimmetSonucu.data ?? [];
+  const zimmetliIdler = new Set(zimmetler.map((z) => z.gecici_kart_id));
+  const bosta = kartlar.filter((k) => k.durum === "aktif" && !zimmetliIdler.has(k.id)).length;
+  const geciken = gecikenIadeSayisi(zimmetler);
+
+  return (
+    <section aria-labelledby="kart-baslik" className="flex flex-col gap-3">
+      <h2 id="kart-baslik" className="text-lg font-semibold">Geçici kartlar</h2>
+      <OzetIzgarasi>
+        <OzetKarti baslik="Verilebilir kart" deger={bosta} aciklama={`${kartlar.length} karttan`} href="/gecici-kartlar" ton={bosta ? "iyi" : "dikkat"} />
+        <OzetKarti baslik="Dışarıdaki kart" deger={zimmetler.length} aciklama="Henüz iade edilmedi" href="/gecici-kartlar" />
+        <OzetKarti
+          baslik="Geciken iade"
+          deger={geciken}
+          aciklama={`${IADE_SURESI_SAAT} saatten uzun süredir dışarıda`}
+          href="/gecici-kartlar"
+          ton={geciken ? "dikkat" : "notr"}
+        />
+      </OzetIzgarasi>
+    </section>
   );
 }
