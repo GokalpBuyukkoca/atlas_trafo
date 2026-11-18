@@ -116,7 +116,7 @@ insert into pdks.fazla_mesai_plani (calisan_id, is_gunu, vardiya_id, planli_dk, 
 values (test.c('GA01'), '2026-12-01', 1, 60, 'Sipariş yetişmeli', test.k('ayse@ornek.test'));
 select test.kural_hatasi('fazla mesaide talep eden ile onaylayan aynı kişi olamaz', 'fazla_mesai_talep_onay_farkli',
     $$update pdks.fazla_mesai_plani set durum = 'onaylandi', karar_veren_id = talep_eden_id, karar_zamani = now()
-      where id = (select id from pdks.fazla_mesai_plani limit 1)$$);
+      where calisan_id = test.c('GA01') and is_gunu = '2026-12-01'$$);
 
 -- 5) Geçici kart ----------------------------------------------------------------
 insert into pdks.gecici_kart (kart_no) values ('GA-GK1');
