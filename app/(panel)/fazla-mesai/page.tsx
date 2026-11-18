@@ -1,0 +1,346 @@
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Secim } from "@/components/panel/secim";
+import { tekDeger } from "@/lib/arama";
+import { tarih, tarihSaat } from "@/lib/bicim";
+import { bugun } from "@/lib/hafta";
+import { rolGerekli } from "@/lib/oturum";
+import { tumSatirlar } from "@/lib/supabase/sayfali";
+import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
+
+export const metadata = { title: "Fazla mesai" };
+
+// Veritabanındaki varsayılanlar (ayar tablosu). Amir ayar tablosunu okuyamaz; o zaman bunlar kullanılır.
+const VARSAYILAN_YILLIK_SINIR_DK = 16_200; // 270 saat
+const VARSAYILAN_YAKLASMA_YUZDE = 80;
+
+type Kisi = { sicil_no: string; ad: string; soyad: string } | null;
+
+type Plan = {
+  id: number;
+  calisan_id: number;
+  is_gunu: string;
+  planli_dk: number;
+  gerekce: string;
+  durum: "talep" | "onaylandi" | "reddedildi" | "iptal";
+  talep_zamani: string;
+  karar_zamani: string | null;
+  karar_aciklama: string | null;
+  calisan: Kisi;
+  vardiya: { kod: string } | null;
+  talep_eden: { ad_soyad: string } | null;
+  karar_veren: { ad_soyad: string } | null;
+};
+
+type Onay = {
+  calisan_id: number;
+  imza_tarihi: string;
+  belge_no: string;
+  geri_alma_bildirim_tarihi: string | null;
+  gecerlilik_bitisi: string | null;
+};
+
+type Calisan = { id: number; sicil_no: string; ad: string; soyad: string; departman: { ad: string } | null };
+
+const DURUM: Record<Plan["durum"], { ad: string; tur: "default" | "secondary" | "destructive" | "outline" }> = {
+  talep: { ad: "İK kararı bekliyor", tur: "default" },
+  onaylandi: { ad: "Onaylandı", tur: "secondary" },
+  reddedildi: { ad: "Reddedildi", tur: "destructive" },
+  iptal: { ad: "İptal", tur: "outline" },
+};
+
+const saat = (dk: number) => `${Math.round((dk / 60) * 10) / 10} sa`.replace(".", ",");
+
+export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fazla-mesai">) {
+  const kullanici = await rolGerekli(["amir", "ik", "yonetici"]);
+  const parametre = await searchParams;
+
+  const buYil = Number(bugun().slice(0, 4));
+  const yil = Number.parseInt(tekDeger(parametre.yil), 10) || buYil;
+  const durumSuzgeci = tekDeger(parametre.durum);
+  const bugunTarih = bugun();
+  // Yazılı onaylar tablosunu yalnızca İK ve yönetici okuyabilir (RLS).
+  const onaylariGorur = kullanici.rol !== "amir";
+
+  const supabase = await sunucuIstemcisi();
+
+  const [planlar, ayarSonucu, onaylar, calisanlar] = await Promise.all([
+    tumSatirlar<Plan>((bas, son) =>
+      supabase
+        .from("fazla_mesai_plani")
+        .select(
+          "id, calisan_id, is_gunu, planli_dk, gerekce, durum, talep_zamani, karar_zamani, karar_aciklama, " +
+            "calisan:calisan_id(sicil_no, ad, soyad), vardiya:vardiya_id(kod), " +
+            "talep_eden:kullanici!talep_eden_id(ad_soyad), karar_veren:kullanici!karar_veren_id(ad_soyad)",
+        )
+        .gte("is_gunu", `${yil}-01-01`)
+        .lte("is_gunu", `${yil}-12-31`)
+        .order("is_gunu", { ascending: false })
+        .order("id")
+        .range(bas, son),
+    ),
+    onaylariGorur
+      ? supabase.from("ayar").select("anahtar, deger").in("anahtar", ["fm_yillik_sinir_dk", "fm_yaklasma_uyari_yuzde"])
+      : Promise.resolve(null),
+    onaylariGorur
+      ? tumSatirlar<Onay>((bas, son) =>
+          supabase
+            .from("fazla_mesai_onayi")
+            .select("calisan_id, imza_tarihi, belge_no, geri_alma_bildirim_tarihi, gecerlilik_bitisi")
+            .eq("yil", yil)
+            .order("id")
+            .range(bas, son),
+        )
+      : Promise.resolve([] as Onay[]),
+    onaylariGorur
+      ? tumSatirlar<Calisan>((bas, son) =>
+          supabase
+            .from("calisan")
+            .select("id, sicil_no, ad, soyad, departman:departman_id(ad)")
+            .eq("aktif", true)
+            .order("sicil_no")
+            .range(bas, son),
+        )
+      : Promise.resolve([] as Calisan[]),
+  ]);
+
+  const ayar = new Map((ayarSonucu?.data ?? []).map((a) => [a.anahtar as string, Number(a.deger)]));
+  const yillikSinir = ayar.get("fm_yillik_sinir_dk") ?? VARSAYILAN_YILLIK_SINIR_DK;
+  const yaklasmaYuzde = ayar.get("fm_yaklasma_uyari_yuzde") ?? VARSAYILAN_YAKLASMA_YUZDE;
+
+  // Yıllık durum: onaylı planların toplamı (veritabanı da 270 saat sınırını bu toplamla denetler).
+  // v_fazla_mesai_yillik görünümü kullanılmıyor: içindeki pdks.ayar_al() fonksiyonunu
+  // giriş yapmış kullanıcı çalıştıramıyor (42501 permission denied). Düzelene kadar burada hesaplanır.
+  const yillik = new Map<number, { kisi: Kisi; onayliDk: number; bekleyenDk: number }>();
+  for (const p of planlar) {
+    const satir = yillik.get(p.calisan_id) ?? { kisi: p.calisan, onayliDk: 0, bekleyenDk: 0 };
+    if (p.durum === "onaylandi") satir.onayliDk += p.planli_dk;
+    if (p.durum === "talep") satir.bekleyenDk += p.planli_dk;
+    yillik.set(p.calisan_id, satir);
+  }
+  const yillikSatirlar = [...yillik.values()].sort((a, b) => b.onayliDk - a.onayliDk);
+
+  // Yazılı onay: geri alındıysa bildirimden 30 gün sonra geçersiz olur
+  const gecerliOnay = new Map(
+    onaylar
+      .filter((o) => !o.gecerlilik_bitisi || o.gecerlilik_bitisi > bugunTarih)
+      .map((o) => [o.calisan_id, o]),
+  );
+  const geriAlinanlar = onaylar.filter((o) => o.geri_alma_bildirim_tarihi);
+  const onaySizlar = calisanlar.filter((c) => !gecerliOnay.has(c.id));
+
+  const gosterilenPlanlar = durumSuzgeci ? planlar.filter((p) => p.durum === durumSuzgeci) : planlar;
+  const bekleyenSayisi = planlar.filter((p) => p.durum === "talep").length;
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Fazla mesai · {yil}</h1>
+        <p className="text-sm text-muted-foreground">
+          Fazla mesai önceden planlanır: amir talep eder, İK onaylar. Yazılı onayı olmayan çalışana plan yapılamaz;
+          günlük 11 saat ve yıllık {saat(yillikSinir)} sınırını veritabanı denetler.
+        </p>
+      </div>
+
+      <section aria-labelledby="planlar-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 id="planlar-baslik" className="text-lg font-semibold">Planlar</h2>
+            <p className="text-sm text-muted-foreground">
+              {planlar.length} plan{bekleyenSayisi > 0 && ` · ${bekleyenSayisi} tanesi İK kararı bekliyor`}
+            </p>
+          </div>
+          <form method="get" className="flex items-end gap-2">
+            {yil !== buYil && <input type="hidden" name="yil" value={yil} />}
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="durum" className="text-sm font-medium">Durum</label>
+              <Secim id="durum" name="durum" defaultValue={durumSuzgeci}>
+                <option value="">Tümü</option>
+                {Object.entries(DURUM).map(([deger, d]) => (
+                  <option key={deger} value={deger}>{d.ad}</option>
+                ))}
+              </Secim>
+            </div>
+            <Button type="submit" size="sm">Süz</Button>
+          </form>
+        </div>
+
+        {gosterilenPlanlar.length === 0 ? (
+          <BosDurum>{planlar.length === 0 ? `${yil} yılında fazla mesai planı yok.` : "Süzgece uyan plan yok."}</BosDurum>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Gün</TableHead>
+                  <TableHead>Çalışan</TableHead>
+                  <TableHead>Vardiya</TableHead>
+                  <TableHead className="text-right">Süre</TableHead>
+                  <TableHead>Gerekçe</TableHead>
+                  <TableHead>Talep eden</TableHead>
+                  <TableHead>Durum</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gosterilenPlanlar.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="tabular-nums">{tarih(p.is_gunu)}</TableCell>
+                    <TableCell><KisiAdi kisi={p.calisan} /></TableCell>
+                    <TableCell>{p.vardiya?.kod === "GUNDUZ" ? "Gündüz" : (p.vardiya?.kod ?? "—")}</TableCell>
+                    <TableCell className="text-right tabular-nums">{saat(p.planli_dk)}</TableCell>
+                    <TableCell className="max-w-64 truncate" title={p.gerekce}>{p.gerekce}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <div>{p.talep_eden?.ad_soyad ?? "—"}</div>
+                      <div className="text-xs tabular-nums">{tarihSaat(p.talep_zamani)}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={DURUM[p.durum].tur}>{DURUM[p.durum].ad}</Badge>
+                      {p.karar_zamani && (
+                        <div className="mt-1 text-xs text-muted-foreground" title={p.karar_aciklama ?? undefined}>
+                          {p.karar_veren?.ad_soyad ?? "Sistem"} · {tarih(p.karar_zamani)}
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="yillik-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id="yillik-baslik" className="text-lg font-semibold">Yıllık sınır</h2>
+          <p className="text-sm text-muted-foreground">
+            Onaylı planların toplamı. Sınırın %{yaklasmaYuzde}&apos;ine gelen çalışan için İK&apos;ya uyarı düşer.
+          </p>
+        </div>
+        {yillikSatirlar.length === 0 ? (
+          <BosDurum>Bu yıl fazla mesai planı olan çalışan yok.</BosDurum>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Çalışan</TableHead>
+                  <TableHead className="text-right">Onaylı</TableHead>
+                  <TableHead className="text-right">Bekleyen talep</TableHead>
+                  <TableHead className="text-right">Kalan</TableHead>
+                  <TableHead className="w-48">Doluluk</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {yillikSatirlar.map((s, i) => {
+                  const yuzde = Math.round((s.onayliDk / yillikSinir) * 100);
+                  return (
+                    <TableRow key={s.kisi?.sicil_no ?? i}>
+                      <TableCell><KisiAdi kisi={s.kisi} /></TableCell>
+                      <TableCell className="text-right tabular-nums">{saat(s.onayliDk)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{s.bekleyenDk ? saat(s.bekleyenDk) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{saat(Math.max(0, yillikSinir - s.onayliDk))}</TableCell>
+                      <TableCell>
+                        <Doluluk yuzde={yuzde} yaklasma={yaklasmaYuzde} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
+      {onaylariGorur && (
+        <section aria-labelledby="onay-baslik" className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 id="onay-baslik" className="text-lg font-semibold">Yazılı onaylar</h2>
+            <p className="text-sm text-muted-foreground">
+              {calisanlar.length - onaySizlar.length} çalışanın {yil} için geçerli yazılı onayı var
+              {geriAlinanlar.length > 0 && ` · ${geriAlinanlar.length} onay geri alındı`}.
+              Onayı olmayan çalışana fazla mesai planlanamaz.
+            </p>
+          </div>
+          {onaySizlar.length === 0 ? (
+            <BosDurum>Bütün çalışanların geçerli yazılı onayı var.</BosDurum>
+          ) : (
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Onayı olmayan çalışan</TableHead>
+                    <TableHead>Bölüm</TableHead>
+                    <TableHead>Durum</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {onaySizlar.map((c) => {
+                    const geriAlinan = onaylar.find((o) => o.calisan_id === c.id);
+                    return (
+                      <TableRow key={c.id}>
+                        <TableCell><KisiAdi kisi={c} /></TableCell>
+                        <TableCell>{c.departman?.ad ?? "—"}</TableCell>
+                        <TableCell>
+                          {geriAlinan ? (
+                            <Badge variant="outline">Geri alındı · {tarih(geriAlinan.gecerlilik_bitisi)} itibarıyla geçersiz</Badge>
+                          ) : (
+                            <Badge variant="outline">Onay yok</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {yil === buYil ? (
+        <Link href={`/fazla-mesai?yil=${buYil - 1}`} className="self-start text-sm text-primary underline-offset-4 hover:underline">
+          {buYil - 1} yılını göster
+        </Link>
+      ) : (
+        <Link href="/fazla-mesai" className="self-start text-sm text-primary underline-offset-4 hover:underline">
+          {buYil} yılına dön
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function Doluluk({ yuzde, yaklasma }: { yuzde: number; yaklasma: number }) {
+  const renk = yuzde >= 100 ? "bg-destructive" : yuzde >= yaklasma ? "bg-amber-500" : "bg-primary";
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.min(yuzde, 100)}
+        aria-label="Yıllık sınır doluluğu"
+      >
+        <div className={cn("h-full rounded-full", renk)} style={{ width: `${Math.min(yuzde, 100)}%` }} />
+      </div>
+      <span className="w-10 text-right text-xs tabular-nums">%{yuzde}</span>
+    </div>
+  );
+}
+
+function KisiAdi({ kisi }: { kisi: Kisi }) {
+  if (!kisi) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span>
+      {kisi.ad} {kisi.soyad} <span className="font-mono text-xs text-muted-foreground">({kisi.sicil_no})</span>
+    </span>
+  );
+}
+
+function BosDurum({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">{children}</div>;
+}

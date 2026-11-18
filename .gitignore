@@ -236,6 +236,8 @@ __marimo__/
 .claude/settings.local.json
 
 # Node.js / Next.js / Vercel
+# Yukarıdaki Python kalıbı "lib/" Next.js'in lib klasörünü de gizliyor; kökteki lib/ izlenir.
+!/lib/
 node_modules/
 .next/
 out/
