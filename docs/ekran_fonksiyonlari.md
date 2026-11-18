@@ -69,7 +69,7 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 | `kart_tanimla` | `p_calisan_id`, `p_kart_no` | Yeni kart tanımlar (aktif kartı olana tanımlanmaz) |
 | `ariza_gir` | `p_okuyucu_id`, `p_baslangic`, `p_bitis?`, `p_aciklama?` | Okuyucu arızası girer |
 | `ariza_karar` | `p_ariza_id`, `p_onay` | Sistemin şüphe olarak açtığı arızayı onaylar/reddeder |
-| `ay_kilitle` | `p_yil`, `p_ay`, `p_zorla?` | Ayı kilitler ve puantajı dondurur. Açık soru/itiraz varsa kilitlemez |
+| `ay_kilitle` | `p_yil`, `p_ay`, `p_zorla?` | Ayı kilitler ve puantajı yazar: her çalışan için `normal` satır (canlı puantajın aynısı) ve önceki kilitli aylara sonradan gelen düzeltmeler için `fark` satırı (`kaynak_donem_id` ile). Açık soru/itiraz varsa kilitlemez; `p_zorla = true` ile geçilir. Kilit geri açılamaz |
 | `dosya_yukle` | `p_kaynak`, `p_dosya_adi`, `p_veri_tarihi`, `p_satirlar` | CSV'den okunan satırları yükler; aktarım no döner |
 | `gece_isi_tetikle` | `p_baslangic`, `p_bitis?` | **Demo düğmesi.** Tarih aralığını gün gün gece işinden geçirir (en fazla 62 gün). Her gün için `gun`, `durum` (`basarili` / `hatali`), `ozet`, `hata_mesaji` satırı döner. Verisi yüklenmemiş gün işlenmez |
 
