@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { ErpSatiri } from "@/lib/erp-aktarim";
 import { PUANTAJ_SUTUNLARI, ayAdi, type PuantajSatiri } from "@/lib/puantaj";
 
 // Puantajı Excel dosyası olarak indirir. Dosya tarayıcıda üretilir; sunucuya bir şey gitmez.
@@ -11,12 +12,14 @@ export function ExcelIndir({
   durum,
   satirlar,
   farkSatirlari,
+  kodlar,
   hazirlayan,
 }: {
   ay: string;
   durum: "acik" | "kilitli";
   satirlar: PuantajSatiri[];
   farkSatirlari: PuantajSatiri[];
+  kodlar: ErpSatiri[]; // kilitli ayın puantaj kodları (açık ayda boş)
   hazirlayan: string;
 }) {
   const [hazirlaniyor, setHazirlaniyor] = useState(false);
@@ -39,6 +42,15 @@ export function ExcelIndir({
 
       XLSX.utils.book_append_sheet(kitap, sayfa(satirlar, false), "Puantaj");
       if (farkSatirlari.length) XLSX.utils.book_append_sheet(kitap, sayfa(farkSatirlari, true), "Fark satırları");
+      if (kodlar.length) {
+        const kodSayfasi = XLSX.utils.aoa_to_sheet([
+          ["Sicil", "Satır türü", "Ait olduğu ay", "Kod", "Gün", "Dakika"],
+          ...kodlar.map((k) => [k.sicil, k.satirTuru, k.kaynakDonem ?? "", k.kod, k.gun, k.dakika]),
+        ]);
+        kodSayfasi["!cols"] = [{ wch: 8 }, { wch: 10 }, { wch: 13 }, { wch: 8 }, { wch: 6 }, { wch: 8 }];
+        kodSayfasi["!autofilter"] = { ref: kodSayfasi["!ref"] ?? "A1" };
+        XLSX.utils.book_append_sheet(kitap, kodSayfasi, "Puantaj kodları");
+      }
 
       const bilgi = XLSX.utils.aoa_to_sheet([
         ["Dönem", ayAdi(ay)],
@@ -46,6 +58,10 @@ export function ExcelIndir({
         ["Hazırlayan", hazirlayan],
         ["Hazırlanma zamanı", new Date().toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })],
         ["Not", "Ücret hesaplanmaz; yalnızca gün ve dakika vardır. Fark satırları önceki aylara ait düzeltmelerdir."],
+        [
+          "Kodlar",
+          "NÇ normal çalışma · FM50 hafta içi fazla mesai · FM100 Pazar / resmi tatil çalışması · Yİ yıllık izin · RPR rapor · MZR mazeret · ÜCSZ ücretsiz izin · Dİ diğer izin · DVMSZ devamsız · RT resmi tatil · HT hafta tatili. Kod sayfası yalnızca kilitli ayda vardır.",
+        ],
       ]);
       bilgi["!cols"] = [{ wch: 18 }, { wch: 80 }];
       XLSX.utils.book_append_sheet(kitap, bilgi, "Bilgi");

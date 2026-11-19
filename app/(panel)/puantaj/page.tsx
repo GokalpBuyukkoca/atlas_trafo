@@ -11,6 +11,8 @@ import { rolGerekli } from "@/lib/oturum";
 import { ayAdi, ayKaydir, saatDakika, type PuantajSatiri } from "@/lib/puantaj";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import type { ErpSatiri } from "@/lib/erp-aktarim";
+import { ErpIndir } from "./erp-indir";
 import { ExcelIndir } from "./excel-indir";
 
 export const metadata = { title: "Puantaj" };
@@ -23,6 +25,10 @@ type Sayilar = {
   calisilan_gun: number;
   calisma_dk: number;
   fazla_mesai_dk: number;
+  fm50_dk: number;
+  fm100_dk: number;
+  gece_calisma_dk: number;
+  mola_dk: number;
   gec_kalma_dk: number;
   erken_cikis_dk: number;
   devamsiz_gun: number;
@@ -35,7 +41,18 @@ type Sayilar = {
 };
 
 const SAYI_SUTUNLARI =
-  "calisan_id, calisilan_gun, calisma_dk, fazla_mesai_dk, gec_kalma_dk, erken_cikis_dk, devamsiz_gun, izinli_gun, raporlu_gun, tatil_gun";
+  "calisan_id, calisilan_gun, calisma_dk, fazla_mesai_dk, fm50_dk, fm100_dk, gece_calisma_dk, mola_dk, gec_kalma_dk, erken_cikis_dk, devamsiz_gun, izinli_gun, raporlu_gun, tatil_gun";
+
+// pdks.v_puantaj_aktarim: kilitli ayın puantaj kodları (ERP aktarımı)
+type AktarimSatiri = {
+  donem: string;
+  sicil: string;
+  satir_turu: "normal" | "fark";
+  kaynak_donem: string | null;
+  kod: string;
+  gun: number;
+  dakika: number;
+};
 
 // Puantaj bordroya gider ve rapor (sağlık) bilgisi içerir: yalnızca İK.
 export default async function PuantajSayfasi({ searchParams }: PageProps<"/puantaj">) {
@@ -89,6 +106,29 @@ export default async function PuantajSayfasi({ searchParams }: PageProps<"/puant
           .range(bas, son),
       );
 
+  // Kilitli ayın kod kırılımı: Excel'in "Puantaj kodları" sayfası ve ERP dosyaları (CSV / XML)
+  const kodlar: ErpSatiri[] = kilitli
+    ? (
+        await tumSatirlar<AktarimSatiri>((bas, son) =>
+          supabase
+            .from("v_puantaj_aktarim")
+            .select("donem, sicil, satir_turu, kaynak_donem, kod, gun, dakika")
+            .eq("donem_id", donem!.id)
+            .order("puantaj_satiri_id")
+            .order("kod")
+            .range(bas, son),
+        )
+      ).map((k) => ({
+        donem: k.donem,
+        sicil: k.sicil,
+        satirTuru: k.satir_turu,
+        kaynakDonem: k.kaynak_donem,
+        kod: k.kod,
+        gun: Number(k.gun),
+        dakika: Number(k.dakika),
+      }))
+    : [];
+
   const normal = new Map(sayilar.filter((s) => s.satir_turu !== "fark").map((s) => [s.calisan_id, s]));
   const calisanById = new Map(calisanlar.map((c) => [c.id, c]));
 
@@ -99,6 +139,10 @@ export default async function PuantajSayfasi({ searchParams }: PageProps<"/puant
     calisilanGun: Number(s?.calisilan_gun ?? 0),
     calismaDk: Number(s?.calisma_dk ?? 0),
     fazlaMesaiDk: Number(s?.fazla_mesai_dk ?? 0),
+    fm50Dk: Number(s?.fm50_dk ?? 0),
+    fm100Dk: Number(s?.fm100_dk ?? 0),
+    geceCalismaDk: Number(s?.gece_calisma_dk ?? 0),
+    molaDk: Number(s?.mola_dk ?? 0),
     gecKalmaDk: Number(s?.gec_kalma_dk ?? 0),
     erkenCikisDk: Number(s?.erken_cikis_dk ?? 0),
     devamsizGun: Number(s?.devamsiz_gun ?? 0),
@@ -140,13 +184,17 @@ export default async function PuantajSayfasi({ searchParams }: PageProps<"/puant
             {ayAdi(ayKaydir(ay, 1))} →
           </Link>
         </nav>
-        <ExcelIndir
-          ay={ay}
-          durum={kilitli ? "kilitli" : "acik"}
-          satirlar={satirlar}
-          farkSatirlari={farkSatirlari}
-          hazirlayan={kullanici.adSoyad}
-        />
+        <div className="flex flex-wrap gap-2">
+          {kilitli && <ErpIndir ay={ay} satirlar={kodlar} />}
+          <ExcelIndir
+            ay={ay}
+            durum={kilitli ? "kilitli" : "acik"}
+            satirlar={satirlar}
+            farkSatirlari={farkSatirlari}
+            kodlar={kodlar}
+            hazirlayan={kullanici.adSoyad}
+          />
+        </div>
       </div>
 
       <OzetIzgarasi>

@@ -58,7 +58,7 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 |---|---|---|
 | `isg_belge_gir` | `p_calisan_id`, `p_tur`, `p_gecerlilik_bitis`, `p_belge_no?` | İSG eğitimi (`isg_egitimi`) ya da periyodik sağlık muayenesi (`saglik_muayenesi`) geçerlilik tarihini girer; kayıt no döner. Sonuç / teşhis girilmez. Yenileme yeni kayıttır; en son girilen geçerlidir. Kendi belgesini giremez |
 | `bolge_yetkisi_ver` | `p_bolge_id`, `p_departman_id` | Departmana bölgeye giriş yetkisi verir |
-| `bolge_yetkisi_kaldir` | `p_bolge_id`, `p_departman_id` | Yetkiyi kaldırır |
+| `bolge_yetkisi_kaldir` | `p_bolge_id`, `p_departman_id` | Yetkiyi kaldırır. Verme ve kaldırma kim / ne zaman bilgisiyle `bolge_yetkisi_gecmisi`'ne yazılır |
 
 Okuma: `v_isg_durum` (çalışan ve tür başına `yok` / `dolmus` / `doluyor` / `gecerli`), `isg_belge`, `bolge`, `bolge_yetkisi`, `okuyucu`; İSG uzmanı `uyari` tablosunda yalnızca İSG ve bölge uyarılarını görür.
 
@@ -159,6 +159,21 @@ Gün gün puantaj kodları (yalnızca İK ve yönetici; izin türünü içerir):
 const { data } = await supabase.schema('pdks').rpc('gun_kodlari', { p_yil: 2026, p_ay: 11 })
 // data: [{ calisan_id: 12, tarih: '2026-11-02', kod: 'NÇ', gun: 1, dakika: 540 }, { ..., kod: 'FM50', gun: 0, dakika: 60 }, ...]
 ```
+
+ERP aktarımı için kilitli ayın kalemleri `v_puantaj_aktarim` görünümünden okunur (yalnızca İK ve yönetici; açık ay yer almaz):
+
+```ts
+await supabase.schema('pdks').from('v_puantaj_aktarim')
+  .select('donem, sicil, satir_turu, kaynak_donem, kod, gun, dakika')
+  .eq('donem_id', donemId).order('puantaj_satiri_id').order('kod')
+```
+
+Puantaj ekranı bu satırlardan iki dosya üretir (`lib/erp-aktarim.ts`); biçim bu projenin tanımladığı sade bir standarttır:
+
+- **CSV** (`puantaj_YYYY-MM.csv`): UTF-8 (BOM'lu), ayırıcı `;`, sütunlar `sicil;donem;satir_turu;kaynak_donem;kod;gun;dakika`. Örnek: `1001;2026-11;normal;;NÇ;20;9600`
+- **XML** (`puantaj_YYYY-MM.xml`): `<PuantajIcmali donem="2026-11" olusturma="…" birim="dakika">` içinde her çalışanın her puantaj satırı için `<Satir sicil="1001" satirTuru="normal">` (fark satırında `kaynakDonem="2026-10"`), onun içinde `<Kalem kod="NÇ" gun="20" dakika="9600"/>`.
+
+Excel dosyası kilitli ayda ayrıca "Puantaj kodları" sayfası içerir; puantaj sayfasında FM50, FM100, gece çalışması ve mola sütunları vardır.
 
 Kilitli ayın kod kırılımı `puantaj_kalemi` tablosundadır (`puantaj_satiri_id`, `kod`, `gun`, `dakika`). `puantaj_satiri` ve `v_puantaj_canli` ayrıca `fm50_dk`, `fm100_dk`, `gece_calisma_dk`, `saatlik_izin_dk`, `mola_dk`, `esnek_hedef_dk`, `esnek_fark_dk` sütunlarını verir.
 
