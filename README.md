@@ -67,6 +67,7 @@ atlas_trafo/
 │  ├─ config.toml            # Supabase CLI ayarları
 │  ├─ migrations/            # sıra numaralı veritabanı değişiklikleri (mevcutlar asla değiştirilmez)
 │  ├─ seed.sql               # örnek (sahte) veri: Kasım 2026
+│  ├─ scripts/               # canlı için salt-okunur kontrol sorguları (SQL Editor'da çalıştırılır)
 │  └─ tests/                 # SQL kural testleri
 └─ .github/workflows/        # PR yetki koruması
 ```
