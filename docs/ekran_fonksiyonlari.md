@@ -98,7 +98,7 @@ Admin çalışan kayıtları üzerinde karar veremez: düzeltme, izin, itiraz, f
 | `ariza_gir` | `p_okuyucu_id`, `p_baslangic`, `p_bitis?`, `p_aciklama?` | Okuyucu arızası girer |
 | `ariza_karar` | `p_ariza_id`, `p_onay` | Sistemin şüphe olarak açtığı arızayı onaylar/reddeder |
 | `ay_kilitle` | `p_yil`, `p_ay`, `p_zorla?` | Ayı kilitler ve puantajı yazar: her çalışan için `normal` satır (canlı puantajın aynısı) ve önceki kilitli aylara sonradan gelen düzeltmeler ya da havuz onayları için `fark` satırı (`kaynak_donem_id` ile); her satırın kod kırılımı `puantaj_kalemi`'ne yazılır. Açık soru/itiraz ya da İK kararı bekleyen onaysız fazla mesai varsa kilitlemez; `p_zorla = true` ile geçilir. Kilit geri açılamaz |
-| `dosya_yukle` | `p_kaynak`, `p_dosya_adi`, `p_veri_tarihi`, `p_satirlar` | CSV'den okunan satırları yükler; aktarım no döner |
+| `dosya_yukle` | `p_kaynak`, `p_dosya_adi`, `p_veri_tarihi`, `p_satirlar`, `p_dosya_ozeti?` | CSV'den okunan satırları yükler; aktarım no döner |
 | `gece_isi_tetikle` | `p_baslangic`, `p_bitis?` | **Demo düğmesi.** Tarih aralığını gün gün gece işinden geçirir (en fazla 62 gün). Her gün için `gun`, `durum` (`basarili` / `hatali`), `ozet`, `hata_mesaji` satırı döner. Verisi yüklenmemiş gün işlenmez |
 
 ### `gece_isi_tetikle` (demo)
@@ -123,14 +123,17 @@ await supabase.schema('pdks').rpc('dosya_yukle', {
   p_dosya_adi: 'pdks_20261113.csv',
   p_veri_tarihi: '2026-11-13',
   p_satirlar: [
-    { okuyucu: 'PDKS-1', kart_no: 'K1001', zaman: '2026-11-13T07:52:00+03:00', yon: 'giris' },
+    { okuyucu: 'PDKS-1', kart_no: 'K1001', zaman: '2026-11-13T07:52:00+03:00', yon: 'giris', satir_no: 2 },
   ],
+  p_dosya_ozeti: '9f86d08…',        // dosyanın SHA-256 özeti (64 hane); ekran crypto.subtle ile çıkarır
 })
 ```
 
 - `pdks` kaynağı ham okutmaya, diğerleri kanıt kaydına yazılır.
-- Okuyucu o kaynağa ait değilse dosyanın tamamı reddedilir.
-- Aynı içerik ikinci kez yüklenirse `Bu dosya daha önce yüklenmiş.` hatası döner.
+- Hepsi ya da hiçbiri: bir satırda bile hata varsa hiçbir satır yazılmaz. Hata mesajı dosyadaki satır numarasını (`satir_no`) söyler.
+- Sunucu denetimi: okuyucu tanımlı ve o kaynağa ait olmalı; kart no `A-Z 0-9 -` (en fazla 32, büyük harfe çevrilir); yön `giris` / `cikis` / boş; zaman **saat dilimiyle** (`+03:00`), aksi halde reddedilir.
+- Aynı dosya (kaynak + özet) ikinci kez yüklenirse `Bu dosya daha önce yüklenmiş.` hatası döner. `p_dosya_ozeti` verilmezse satırların md5'i kullanılır (eski çağrı biçimi).
+- Başka bir dosyayla zaten gelmiş okutmalar atlanır; `aktarim.satir_sayisi` yalnızca yazılan okutmaları sayar. Okutmaların tamamı önceden gelmişse aktarım 0 satırla yine kaydedilir, çünkü gece işi bir günün verisini o gün için aktarım satırı varsa tam sayar.
 
 ## Okuma (select)
 
