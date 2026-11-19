@@ -178,6 +178,12 @@ select test.dogrula('İSG uzmanı bölge yetkisi verir',
 select pdks.bolge_yetkisi_kaldir(test.b('IS-LAB'), test.d('IS Üretim'));
 select test.dogrula('İSG uzmanı bölge yetkisini kaldırır',
     not exists (select 1 from pdks.bolge_yetkisi where bolge_id = test.b('IS-LAB') and departman_id = test.d('IS Üretim')));
+select test.dogrula('yetki izi: verildi ve kaldırıldı, ikisi de kim yaptığıyla (20261127010000_bolge_yetkisi_izi)',
+    (select array_agg(islem order by id) = array['verildi', 'kaldirildi']
+            and bool_and(yapan_id = test.k('is_isg@ornek.test'))
+     from pdks.bolge_yetkisi_gecmisi where bolge_id = test.b('IS-LAB') and departman_id = test.d('IS Üretim')));
+select test.dogrula('İSG uzmanı yetki izini görür',
+    (select count(*) >= 3 from pdks.bolge_yetkisi_gecmisi where bolge_id = test.b('IS-LAB')));
 select test.oturum('is_ik@ornek.test');
 select test.hata('İK İSG belgesi giremez', 'yetkiniz yok',
     format($$select pdks.isg_belge_gir(%s, 'isg_egitimi', '2027-01-01')$$, test.c('IS01')));
@@ -189,6 +195,8 @@ select test.oturum('is_amir@ornek.test');
 select test.dogrula('amir İSG belgelerini ve İSG durumunu göremez',
     (select count(*) from pdks.isg_belge) = 0 and (select count(*) from pdks.v_isg_durum) = 0);
 reset role;
+select test.hata('bölge yetkisi izi silinemez', 'değiştirilemez',
+    $$delete from pdks.bolge_yetkisi_gecmisi$$);
 select test.hata('İSG belgesi değiştirilemez / silinemez', 'değiştirilemez',
     format($$delete from pdks.isg_belge where calisan_id = %s$$, test.c('IS02')));
 select test.hata('İSG belgesini yalnızca İSG uzmanı girer (tablo kuralı)', 'yalnızca İSG uzmanı',

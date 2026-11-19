@@ -43,6 +43,8 @@ olarak veritabanının içinde çalışır.
 | `supabase/migrations/20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları ve kalemleri (+3 tablo) |
 | `supabase/migrations/20261125010000_organizasyon_ve_roller.sql` | `departman.yaka` (mavi / beyaz), `isg` ve `admin` rolleri, admin için `kullanici_ekle`, `kullanici_guncelle`, `ayar_guncelle` |
 | `supabase/migrations/20261126010000_isg.sql` | Bölge (`bolge`, `okuyucu.bolge_id`, `bolge_yetkisi`), İSG belgeleri (`isg_belge`, `v_isg_durum`), İSG ve bölge uyarıları (+3 tablo) |
+| `supabase/migrations/20261127010000_bolge_yetkisi_izi.sql` | Bölge yetkisinin verilme / kaldırılma izi `bolge_yetkisi_gecmisi` (+1 tablo) |
+| `supabase/migrations/20261127020000_erp_aktarim.sql` | ERP aktarım görünümü `v_puantaj_aktarim` (kilitli ayın puantaj kodları) |
 | `supabase/migrations/20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00, esnek), esnek mesai ve `v_esnek_mesai`, otomatik vardiya tanıma (öneri amir onayıyla uygulanır), mola (m.68); vardiya düzeltmesi planlı saatleri de günceller |
 | `supabase/tests/kurallar_testi.sql` | 27 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/izin_ve_ozet_testi.sql` | İzin iptali ve departman özeti için 15 test |
@@ -50,7 +52,8 @@ olarak veritabanının içinde çalışır.
 | `supabase/tests/puantaj_kurallari_testi.sql` | Tolerans, havuz, FM50 / FM100, gece çalışması, saatlik izin, kodlar ve kalemler için 68 test |
 | `supabase/tests/vardiya_kurallari_testi.sql` | Yeni vardiyalar, mola, esnek mesai, otomatik vardiya tanıma ve vardiya düzeltmesi için 24 test |
 | `supabase/tests/organizasyon_roller_testi.sql` | Yaka, `isg` / `admin` rolleri, admin fonksiyonları, admin'in karar verememesi ve rol bazında görünürlük için 35 test |
-| `supabase/tests/isg_testi.sql` | Bölge yetkisi, İSG belgeleri, uyarılar ve İSG yetkileri için 27 test |
+| `supabase/tests/isg_testi.sql` | Bölge yetkisi ve izi, İSG belgeleri, uyarılar ve İSG yetkileri için 30 test |
+| `supabase/tests/erp_aktarim_testi.sql` | ERP aktarımı: yalnızca kilitli ay, kalemlerle tutarlılık, fark satırı, yetkiler için 9 test |
 | `supabase/tests/gece_isi_testi.sql` | Gece işi: 23 mekanik test (her zaman) + örnek veri yüklüyse S1–S23 senaryoları (26 test) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
@@ -115,7 +118,7 @@ olarak veritabanının içinde çalışır.
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
 | 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
 | 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, onaysız fazla mesai havuzu `fazla_mesai_inceleme`, `gun_kaydi.fazla_mesai_dk` (= `fm50_dk` + `fm100_dk`), `v_fazla_mesai_yillik` |
-| 15 Bordro aktarımı | `puantaj_satiri` ve kod kırılımı `puantaj_kalemi` (NÇ, FM50, FM100, Yİ, RPR, MZR, ÜCSZ, Dİ, DVMSZ, RT, HT); Excel dosyasını uygulama SheetJS ile üretir |
+| 15 Bordro aktarımı | `puantaj_satiri` ve kod kırılımı `puantaj_kalemi` (NÇ, FM50, FM100, Yİ, RPR, MZR, ÜCSZ, Dİ, DVMSZ, RT, HT); ERP için `v_puantaj_aktarim` (yalnızca kilitli ay). Excel, CSV ve XML dosyalarını uygulama üretir |
 | 17 Çalışan kendi kaydını göremiyor | Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
@@ -312,7 +315,7 @@ puantajına fark satırı olarak girer.
 
 | Kural | Nerede |
 |---|---|
-| Bölge yetkisi | `bolge` (ör. YG Test Laboratuvarı, Boyahane), `okuyucu.bolge_id` (bölge kapısı), `bolge_yetkisi` (bölge + departman). Yetkisi olmayan departmandan biri bölge okuyucusunda okutursa `yetkisiz_bolge_okutmasi` uyarısı. Yetkiyi İSG uzmanı verir / kaldırır (`bolge_yetkisi_ver`, `bolge_yetkisi_kaldir`) |
+| Bölge yetkisi | `bolge` (ör. YG Test Laboratuvarı, Boyahane), `okuyucu.bolge_id` (bölge kapısı), `bolge_yetkisi` (bölge + departman). Yetkisi olmayan departmandan biri bölge okuyucusunda okutursa `yetkisiz_bolge_okutmasi` uyarısı. Yetkiyi İSG uzmanı verir / kaldırır (`bolge_yetkisi_ver`, `bolge_yetkisi_kaldir`); her verme ve kaldırma kim / ne zaman bilgisiyle silinmeyen `bolge_yetkisi_gecmisi`'ne yazılır |
 | Bölge okutması | Yönsüz kayıttır: giriş / çıkış saati olarak kullanılmaz, yalnızca "çalışan buradaydı" izi sayılır |
 | İSG eğitimi ve sağlık muayenesi | `isg_belge`: tür (`isg_egitimi`, `saglik_muayenesi`) ve yalnızca geçerlilik bitiş tarihi; sonuç ya da teşhis tutulmaz. Yalnızca İSG uzmanı girer (`isg_belge_gir`), kendi belgesini giremez; silinmez, değişmez. Her tür için en son girilen kayıt geçerlidir |
 | Mavi yaka uyarıları (gece işi) | O gün okutması olan mavi yaka çalışan için kayıt yoksa `isg_belgesi_yok`, süresi geçmişse `isg_belgesi_suresi_dolmus`; süresi `isg_uyari_gun` (30) gün içinde dolacaksa `isg_belgesi_suresi_doluyor`. Her uyarı bir kez yazılır |

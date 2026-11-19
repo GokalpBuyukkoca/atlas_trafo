@@ -8,6 +8,10 @@ export type PuantajSatiri = {
   calisilanGun: number;
   calismaDk: number;
   fazlaMesaiDk: number;
+  fm50Dk: number; // hafta içi fazla mesai (%50)
+  fm100Dk: number; // Pazar / resmi tatil çalışması (%100)
+  geceCalismaDk: number; // 20:00–06:00 arası çalışma
+  molaDk: number; // düşülen yasal mola
   gecKalmaDk: number;
   erkenCikisDk: number;
   devamsizGun: number;
@@ -27,6 +31,10 @@ export const PUANTAJ_SUTUNLARI: Sutun[] = [
   { baslik: "Çalışılan gün", deger: (s) => s.calisilanGun, genislik: 13, sayi: true },
   { baslik: "Çalışma (dk)", deger: (s) => s.calismaDk, genislik: 12, sayi: true },
   { baslik: "Fazla mesai (dk)", deger: (s) => s.fazlaMesaiDk, genislik: 15, sayi: true },
+  { baslik: "FM50 (dk)", deger: (s) => s.fm50Dk, genislik: 10, sayi: true },
+  { baslik: "FM100 (dk)", deger: (s) => s.fm100Dk, genislik: 11, sayi: true },
+  { baslik: "Gece çalışma (dk)", deger: (s) => s.geceCalismaDk, genislik: 16, sayi: true },
+  { baslik: "Mola (dk)", deger: (s) => s.molaDk, genislik: 10, sayi: true },
   { baslik: "Geç kalma (dk)", deger: (s) => s.gecKalmaDk, genislik: 14, sayi: true },
   { baslik: "Erken çıkış (dk)", deger: (s) => s.erkenCikisDk, genislik: 15, sayi: true },
   { baslik: "Devamsız gün", deger: (s) => s.devamsizGun, genislik: 13, sayi: true },
