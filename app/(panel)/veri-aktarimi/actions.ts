@@ -2,7 +2,40 @@
 
 import { revalidatePath } from "next/cache";
 import type { IslemSonucu } from "@/lib/islem-sonucu";
-import { rpcCagir, tarihAl } from "@/lib/supabase/rpc";
+import { metinAl, rpcCagir, sayiAl, tarihAl, zamanAl } from "@/lib/supabase/rpc";
+
+// İK okuyucu arızasını girer. Arıza süresince o okuyucudan beklenen okutmalar eksik sayılmaz;
+// gece işi kanıt arar, yoksa amire "arıza, kanıt yok" sorusu açar.
+export async function arizaGir(_onceki: IslemSonucu, form: FormData): Promise<IslemSonucu> {
+  const okuyucuId = sayiAl(form, "okuyucu_id");
+  const baslangic = zamanAl(form, "baslangic");
+  const bitis = zamanAl(form, "bitis");
+  if (!okuyucuId) return { durum: "hata", mesaj: "Okuyucuyu seçin." };
+  if (!baslangic) return { durum: "hata", mesaj: "Arızanın başlangıcını girin." };
+  if (bitis && bitis <= baslangic) return { durum: "hata", mesaj: "Bitiş başlangıçtan sonra olmalı." };
+
+  const sonuc = await rpcCagir<number>("ariza_gir", {
+    p_okuyucu_id: okuyucuId,
+    p_baslangic: baslangic,
+    p_bitis: bitis,
+    p_aciklama: metinAl(form, "aciklama"),
+  });
+  if (!sonuc.tamam) return { durum: "hata", mesaj: sonuc.mesaj };
+  revalidatePath("/veri-aktarimi");
+  return { durum: "tamam", mesaj: "Arıza kaydedildi. Etkisi bir sonraki gece işinde görülür." };
+}
+
+// Gece işinin "arıza şüphesi" olarak açtığı kaydı İK onaylar ya da reddeder.
+export async function arizaKarari(_onceki: IslemSonucu, form: FormData): Promise<IslemSonucu> {
+  const arizaId = sayiAl(form, "ariza_id");
+  const karar = metinAl(form, "karar");
+  if (!arizaId || (karar !== "onay" && karar !== "ret")) return { durum: "hata", mesaj: "Arıza ya da karar seçilmedi." };
+
+  const sonuc = await rpcCagir("ariza_karar", { p_ariza_id: arizaId, p_onay: karar === "onay" });
+  if (!sonuc.tamam) return { durum: "hata", mesaj: sonuc.mesaj };
+  revalidatePath("/veri-aktarimi");
+  return { durum: "tamam", mesaj: karar === "onay" ? "Arıza onaylandı." : "Arıza şüphesi reddedildi." };
+}
 
 type GunSonucu = { gun: string; durum: "basarili" | "hatali" | "calisiyor"; ozet: Record<string, unknown> | null; hata_mesaji: string | null };
 

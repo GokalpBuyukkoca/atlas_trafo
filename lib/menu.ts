@@ -12,6 +12,7 @@ const VARDIYA_PLANI: MenuOgesi = { baslik: "Vardiya planı", yol: "/vardiya-plan
 const FAZLA_MESAI: MenuOgesi = { baslik: "Fazla mesai", yol: "/fazla-mesai" };
 const CALISANLAR: MenuOgesi = { baslik: "Çalışanlar", yol: "/calisanlar" };
 const GECICI_KARTLAR: MenuOgesi = { baslik: "Geçici kartlar", yol: "/gecici-kartlar" };
+const IZINLER: MenuOgesi = { baslik: "İzinler", yol: "/izinler" };
 const VERI_AKTARIMI: MenuOgesi = { baslik: "Veri aktarımı", yol: "/veri-aktarimi" };
 
 // Her rol yalnızca kendi menüsünü görür. Yeni ekran eklendikçe buraya satır eklenir.
@@ -19,7 +20,7 @@ const VERI_AKTARIMI: MenuOgesi = { baslik: "Veri aktarımı", yol: "/veri-aktari
 // Not: menüde görünmemek yetki değildir; asıl kontrol veritabanında (RLS) yapılır.
 export const MENU: Record<Rol, MenuOgesi[]> = {
   amir: [ANA_SAYFA, SORULARIM, ITIRAZLAR, VARDIYA_PLANI, FAZLA_MESAI, CALISANLAR],
-  ik: [ANA_SAYFA, UYARILAR, SORULAR, ITIRAZLAR, PUANTAJ, VARDIYA_PLANI, FAZLA_MESAI, CALISANLAR, GECICI_KARTLAR, VERI_AKTARIMI],
+  ik: [ANA_SAYFA, UYARILAR, SORULAR, ITIRAZLAR, PUANTAJ, IZINLER, VARDIYA_PLANI, FAZLA_MESAI, CALISANLAR, GECICI_KARTLAR, VERI_AKTARIMI],
   guvenlik: [ANA_SAYFA, GECICI_KARTLAR, CALISANLAR],
   yonetici: [ANA_SAYFA, UYARILAR, SORULAR, ITIRAZLAR, VARDIYA_PLANI, FAZLA_MESAI, CALISANLAR, GECICI_KARTLAR, VERI_AKTARIMI],
   // Ekranları sonra yapılacak; şimdilik yalnızca ana sayfa

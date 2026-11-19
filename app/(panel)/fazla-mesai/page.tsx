@@ -15,7 +15,7 @@ import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
-import { fazlaMesaiKarar, fazlaMesaiTalepEt, havuzKarari } from "./actions";
+import { fazlaMesaiKarar, fazlaMesaiTalepEt, havuzKarari, yaziliOnayGeriAl, yaziliOnayGir } from "./actions";
 
 export const metadata = { title: "Fazla mesai" };
 
@@ -422,6 +422,53 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
 
       {onaylariGorur && (
         <section aria-labelledby="onay-baslik" className="flex flex-col gap-3">
+          {ik && (
+            <div className="flex flex-wrap gap-2">
+              <IslemPenceresi
+                dugme="Yazılı onay gir"
+                baslik="Yıllık yazılı fazla mesai onayı"
+                aciklama="Çalışanın imzaladığı yıllık onay belgesi. Onayı olmayan çalışana fazla mesai planlanamaz."
+                onay="Kaydet"
+                islem={yaziliOnayGir}
+              >
+                <Alan etiket="Çalışanın sicil numarası" htmlFor="o-sicil">
+                  <Input id="o-sicil" name="sicil" list="fm-calisanlar" required autoComplete="off" inputMode="numeric" />
+                </Alan>
+                <div className="grid grid-cols-3 gap-3">
+                  <Alan etiket="Yıl" htmlFor="o-yil">
+                    <Input id="o-yil" name="yil" type="number" required min={2000} max={2100} defaultValue={yil} />
+                  </Alan>
+                  <Alan etiket="İmza tarihi" htmlFor="o-imza">
+                    <Input id="o-imza" name="imza_tarihi" type="date" required defaultValue={bugunTarih} />
+                  </Alan>
+                  <Alan etiket="Belge no" htmlFor="o-belge">
+                    <Input id="o-belge" name="belge_no" required maxLength={50} />
+                  </Alan>
+                </div>
+              </IslemPenceresi>
+              <IslemPenceresi
+                dugme="Onayı geri al"
+                dugmeTuru="ghost"
+                baslik="Yazılı onayın geri alınması"
+                aciklama="Çalışan onayını yazılı bildirimle geri çeker; onay bildirimden 30 gün sonra geçersiz olur."
+                onay="Geri al"
+                onayTuru="destructive"
+                islem={yaziliOnayGeriAl}
+              >
+                <Alan etiket="Çalışanın sicil numarası" htmlFor="g-sicil">
+                  <Input id="g-sicil" name="sicil" list="fm-calisanlar" required autoComplete="off" inputMode="numeric" />
+                </Alan>
+                <div className="grid grid-cols-2 gap-3">
+                  <Alan etiket="Yıl" htmlFor="g-yil">
+                    <Input id="g-yil" name="yil" type="number" required min={2000} max={2100} defaultValue={yil} />
+                  </Alan>
+                  <Alan etiket="Bildirim tarihi" htmlFor="g-bildirim">
+                    <Input id="g-bildirim" name="bildirim_tarihi" type="date" required defaultValue={bugunTarih} />
+                  </Alan>
+                </div>
+              </IslemPenceresi>
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <h2 id="onay-baslik" className="text-lg font-semibold">Yazılı onaylar</h2>
             <p className="text-sm text-muted-foreground">

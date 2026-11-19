@@ -4,7 +4,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Secim } from "@/components/panel/secim";
 import { IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
 import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
@@ -16,7 +18,7 @@ import { rolGerekli } from "@/lib/oturum";
 import { ayAdi, ayKaydir, saatDakika } from "@/lib/puantaj";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
-import { itirazGir, kayitDuzelt } from "./actions";
+import { itirazGir, kartIptalEt, kartTanimla, kayitDuzelt } from "./actions";
 import { DuzeltmeAlanlari, type DuzeltmeItirazi } from "./duzeltme-alanlari";
 import { PdfIndir } from "./pdf-indir";
 
@@ -45,6 +47,13 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
   // Kaydı yalnızca İK düzeltir; kendi kaydını düzeltemez (veritabanı da reddeder)
   const duzeltebilir = kullanici.rol === "ik" && kullanici.calisanId !== calisanId;
   const islemSutunu = itirazGirebilir || duzeltebilir;
+
+  // Kart işlemleri yalnızca İK (asıl kartın no'su ve id'si)
+  const aktifKart = duzeltebilir
+    ? ((await supabase.from("kart").select("id, kart_no").eq("calisan_id", calisanId).eq("durum", "aktif").maybeSingle()).data as
+        | { id: number; kart_no: string }
+        | null)
+    : null;
 
   // Düzeltme bir itiraza bağlanabilsin diye bu ayın itirazları (gün kaydına göre)
   const itirazByGun = new Map<number, DuzeltmeItirazi[]>();
@@ -84,7 +93,43 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
           <span className="min-w-28 text-center font-semibold">{ayAdi(ay)}</span>
           <Link href={adres(ayKaydir(ay, 1))} className={buttonVariants({ variant: "outline", size: "sm" })}>→</Link>
         </nav>
-        {kullanici.rol === "ik" && <PdfIndir dokum={dokum} hazirlayan={kullanici.adSoyad} />}
+        <div className="flex flex-wrap gap-2">
+          {duzeltebilir && calisan.aktif && !aktifKart && (
+            <IslemPenceresi
+              dugme="Kart tanımla"
+              baslik={`${calisan.adSoyad} · yeni kart`}
+              aciklama="Kartın üzerindeki numarayı girin. Numara harf, rakam ve tireden oluşur; başka bir kartta kullanılamaz."
+              onay="Kartı tanımla"
+              islem={kartTanimla}
+              gizli={{ calisan_id: calisanId }}
+            >
+              <label htmlFor="kart_no" className="text-sm font-medium">Kart numarası</label>
+              <Input id="kart_no" name="kart_no" required maxLength={32} autoComplete="off" className="font-mono uppercase" placeholder="ör. K1031" />
+            </IslemPenceresi>
+          )}
+          {duzeltebilir && aktifKart && (
+            <IslemPenceresi
+              dugme="Kartı iptal et"
+              dugmeTuru="ghost"
+              baslik={`${aktifKart.kart_no} kartını iptal et`}
+              aciklama="İptal edilen kart artık geçerli sayılmaz; okutulursa İK'ya uyarı düşer. Yeni kart iptalden sonra tanımlanır."
+              onay="İptal et"
+              onayTuru="destructive"
+              islem={kartIptalEt}
+              gizli={{ kart_id: aktifKart.id }}
+            >
+              <label htmlFor="neden" className="text-sm font-medium">Neden</label>
+              <Secim id="neden" name="neden" required defaultValue="" className="h-9">
+                <option value="" disabled>Seçin</option>
+                <option value="kayip">Kayıp</option>
+                <option value="yenilendi">Yenilendi</option>
+                <option value="isten_cikis">İşten çıkış</option>
+                <option value="diger">Diğer</option>
+              </Secim>
+            </IslemPenceresi>
+          )}
+          {kullanici.rol === "ik" && <PdfIndir dokum={dokum} hazirlayan={kullanici.adSoyad} />}
+        </div>
       </div>
 
       <OzetIzgarasi>
