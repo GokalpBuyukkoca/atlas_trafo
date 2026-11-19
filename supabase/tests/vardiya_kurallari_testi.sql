@@ -94,6 +94,26 @@ from (values
     ('VK05', '2026-10-07 15:58', 'giris'), ('VK05', '2026-10-08 00:04', 'cikis'),   -- plan 08-16, çalıştığı 16-24
     ('VK06', '2026-10-07 08:02', 'giris')) v(s, z, y);                               -- çıkış yok
 
+-- VK07 (esnek, ayrı departman): PDKS girişi yok, yalnızca kapı kaydı var (20261129010000_esnek_kanit)
+--   6 Ekim: kapı 09:12, PDKS çıkış 17:30   → giriş 09:17 yazılır, soru yok
+--   7 Ekim: kapı 18:00, PDKS çıkış 17:00   → kanıt çıkıştan sonra: yazılmaz, amire sorulur
+insert into pdks.calisan (sicil_no, ad, soyad, departman_id, ise_giris_tarihi)
+values ('VK07', 'AdVK07', 'Örnek', (select id from pdks.departman where ad = 'VK İdari'), '2025-01-01');
+insert into pdks.kart (kart_no, calisan_id) values ('VK-VK07', test.c('VK07'));
+insert into pdks.vardiya_plani (calisan_id, tarih, vardiya_id, giren_id)
+select test.c('VK07'), t, test.v('ESNEK'), test.k('vk_ik@ornek.test') from unnest(array['2026-10-06', '2026-10-07']::date[]) t;
+insert into pdks.okuyucu (kod, ad, sistem) values ('VK-KAPI', 'VK kapı', 'kapi');
+insert into pdks.aktarim (kaynak, dosya_adi, dosya_ozeti, veri_tarihi)
+select 'kapi', 'vk_kapi_' || g || '.csv', 'vk-kapi-' || g, g from unnest(array['2026-10-06', '2026-10-07']::date[]) g;
+insert into pdks.ham_okutma (aktarim_id, okuyucu_id, kart_no, okutma_zamani, yon)
+select (select id from pdks.aktarim where dosya_ozeti = 'vk-pdks-' || (z::timestamp)::date),
+       (select id from pdks.okuyucu where kod = 'VK-PDKS'), 'VK-VK07', test.ts(z), 'cikis'
+from unnest(array['2026-10-06 17:30', '2026-10-07 17:00']) z;
+insert into pdks.kanit_kaydi (aktarim_id, okuyucu_id, kaynak, kart_no, okutma_zamani, yon)
+select (select id from pdks.aktarim where dosya_ozeti = 'vk-kapi-' || (z::timestamp)::date),
+       (select id from pdks.okuyucu where kod = 'VK-KAPI'), 'kapi', 'VK-VK07', test.ts(z), 'giris'
+from unnest(array['2026-10-06 09:12', '2026-10-07 18:00']) z;
+
 do $$
 declare d date;
 begin
@@ -154,6 +174,22 @@ select test.dogrula('canlı puantajda esnek hedef ve fark; esnek olmayanda 0',
      from pdks.v_puantaj_canli where calisan_id = test.c('VK04') and yil = 2026 and ay = 10)
     and (select esnek_hedef_dk = 0 and esnek_fark_dk = 0
          from pdks.v_puantaj_canli where calisan_id = test.c('VK03') and yil = 2026 and ay = 10));
+
+-- 4b) Esnek mesaide eksik giriş: kanıt saati doğrudan yazılır ---------------------------
+select test.dogrula('esnek, PDKS girişi yok: kapı 09:12 + 5 dk yürüme → giriş 09:17 kanıtla yazıldı',
+    (select giris_zamani = test.ts('2026-10-06 09:17') and giris_kaynagi = 'kanit' and durum = 'tamam'
+            and gec_kalma_dk = 0 and calisma_dk = 433   -- 09:17–17:30 = 493 dk − 60 dk mola
+     from test.gk('VK07', '2026-10-06')));
+select test.dogrula('esnek düzeltme izi: kaynak gece işi, dayanak kapı kaydı, gerekçede "Esnek mesai"',
+    exists (select 1 from pdks.duzeltme d where d.gun_kaydi_id = (test.gk('VK07', '2026-10-06')).id
+            and d.alan = 'giris_zamani' and d.kaynak = 'gece_isi' and d.kanit_kaydi_id is not null
+            and d.gerekce like 'Esnek mesai: Kapı kaydı 09:12%'));
+select test.dogrula('esnek: amire "kanıt vardiya başından sonra" sorusu açılmadı',
+    not exists (select 1 from pdks.amir_sorusu where gun_kaydi_id = (test.gk('VK07', '2026-10-06')).id));
+select test.dogrula('esnek: kanıt PDKS çıkışından sonraysa yazılmaz, gün amire / İK''ya sorulur',
+    (select giris_zamani is null and durum = 'soru_bekliyor' from test.gk('VK07', '2026-10-07'))
+    and exists (select 1 from pdks.amir_sorusu where gun_kaydi_id = (test.gk('VK07', '2026-10-07')).id
+                and soru_turu = 'kanit_vardiya_sonrasi'));
 
 -- 5) Otomatik vardiya tanıma -------------------------------------------------------------
 select test.dogrula('planı 08-16, okutmaları 16-24: vardiya uyuşmazlığı sorusu, öneri Akşam (16-24)',

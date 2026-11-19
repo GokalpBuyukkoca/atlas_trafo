@@ -31,7 +31,12 @@ with beklenen(surum, ad, nesne) as (values
     ('20261125010000', 'organizasyon_ve_roller',         exists (select 1 from information_schema.columns where table_schema = 'pdks' and table_name = 'departman' and column_name = 'yaka')),
     ('20261126010000', 'isg',                            to_regclass('pdks.isg_belge') is not null),
     ('20261127010000', 'bolge_yetkisi_izi',              to_regclass('pdks.bolge_yetkisi_gecmisi') is not null),
-    ('20261127020000', 'erp_aktarim',                    to_regclass('pdks.v_puantaj_aktarim') is not null)
+    ('20261127020000', 'erp_aktarim',                    to_regclass('pdks.v_puantaj_aktarim') is not null),
+    ('20261128010000', 'dosya_yukle_duzeltmesi',         exists (select 1 from pg_proc where pronamespace = 'pdks'::regnamespace and proname = 'dosya_yukle'
+                                                                 and pg_get_function_identity_arguments(oid) like '%p_dosya_ozeti%')),
+    ('20261129010000', 'esnek_kanit',                    exists (select 1 from pg_proc where pronamespace = 'pdks'::regnamespace and proname = 'gece_isi_kanitla_duzelt'
+                                                                 and prosrc like '%Esnek mesai%')),
+    ('20261129020000', 'zimmet_cakisma_mesaji',          exists (select 1 from pg_proc where pronamespace = 'pdks'::regnamespace and proname = 'yonelme_eki'))
 ), kayit as (
     -- CLI hiç kullanılmadıysa kayıt tablosu yoktur; o zaman hepsi "hayır" görünür
     select (xpath('/row/v/text()', x))[1]::text as surum
