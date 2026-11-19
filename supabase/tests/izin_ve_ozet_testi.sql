@@ -132,7 +132,7 @@ select test.dogrula('Kalite: 1 çalışılan gün, 1 geç kalınan gün, 20 dk',
     (select calisilan_gun = 1 and gec_kalinan_gun = 1 and gec_kalma_dk = 20 and acik_soru = 0
      from pdks.v_departman_ozet where yil = 2026 and ay = 10 and departman = 'IZ Kalite'));
 select test.dogrula('özet gün kayıtlarıyla tutarlı (Kalite çalışma dakikası)',
-    (select (select calisma_dk from test.gk('IZ11', '2026-10-12')) = 520));
+    (select (select calisma_dk from test.gk('IZ11', '2026-10-12')) = 460));
 
 select test.oturum('iz_amir@ornek.test');
 select test.dogrula('amir yalnızca kendi departmanını görür',

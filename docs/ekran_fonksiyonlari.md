@@ -41,7 +41,7 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 | `gelmedi` | Kayıt değişmez; soru İK kararına geçer (`ik_karari_bekliyor`) |
 | `bilmiyorum` | `gelmedi` ile aynı: karar İK'nındır |
 
-`vardiya_uyusmazligi` türündeki sorularda saatler her cevapta girilmelidir.
+`vardiya_uyusmazligi` sorusu, okutmalar başka bir vardiyaya uyduğunda açılır; soruda öneri vardır (`onerilen_vardiya_id`, `onerilen_zaman` = giriş, `onerilen_cikis`). `geldi_saat_dogru` (saat girmeden) öneriyi uygular: günün vardiyası, planlı saatleri, girişi ve çıkışı düzeltilir. `geldi_saat_farkli` ile girilen saatler yazılır, vardiya değişmez. Önerisi olmayan bu tür soruda saatler girilmelidir.
 
 ## Güvenlik
 
@@ -136,7 +136,13 @@ const { data } = await supabase.schema('pdks').rpc('gun_kodlari', { p_yil: 2026,
 // data: [{ calisan_id: 12, tarih: '2026-11-02', kod: 'NÇ', gun: 1, dakika: 540 }, { ..., kod: 'FM50', gun: 0, dakika: 60 }, ...]
 ```
 
-Kilitli ayın kod kırılımı `puantaj_kalemi` tablosundadır (`puantaj_satiri_id`, `kod`, `gun`, `dakika`). `puantaj_satiri` ve `v_puantaj_canli` ayrıca `fm50_dk`, `fm100_dk`, `gece_calisma_dk`, `saatlik_izin_dk` sütunlarını verir.
+Kilitli ayın kod kırılımı `puantaj_kalemi` tablosundadır (`puantaj_satiri_id`, `kod`, `gun`, `dakika`). `puantaj_satiri` ve `v_puantaj_canli` ayrıca `fm50_dk`, `fm100_dk`, `gece_calisma_dk`, `saatlik_izin_dk`, `mola_dk`, `esnek_hedef_dk`, `esnek_fark_dk` sütunlarını verir.
+
+Esnek mesaili çalışanların aylık hedef durumu `v_esnek_mesai` görünümündedir (`hedef_gun`, `hedef_dk`, `gerceklesen_dk`, `fark_dk`, `bekleyen_gun`):
+
+```ts
+await supabase.schema('pdks').from('v_esnek_mesai').select('*').eq('yil', 2026).eq('ay', 11)
+```
 
 **İK `izin` tablosunu doğrudan okuyorsa iptal edilen izinleri süzmelidir:**
 

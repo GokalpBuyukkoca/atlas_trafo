@@ -116,12 +116,12 @@ select test.dogrula('planı olan 9 kişiye gün kaydı açıldı',
      where c.sicil_no like 'GT%' and g.is_gunu = '2026-10-06'));
 
 -- 2) Hesap -------------------------------------------------------------
-select test.dogrula('normal gün: tamam, geç/erken 0, çalışma 540 dk',
-    (select durum = 'tamam' and hesap_tamam and gec_kalma_dk = 0 and erken_cikis_dk = 0 and calisma_dk = 540
+select test.dogrula('normal gün: tamam, geç/erken 0, çalışma 480 dk (540 − 60 dk mola)',
+    (select durum = 'tamam' and hesap_tamam and gec_kalma_dk = 0 and erken_cikis_dk = 0 and calisma_dk = 480
             and fazla_mesai_dk = 0
      from test.gk('GT01', '2026-10-06')));
-select test.dogrula('20 dk geç kalma hesaplandı',
-    (select gec_kalma_dk = 20 and calisma_dk = 520 from test.gk('GT06', '2026-10-06')));
+select test.dogrula('20 dk geç kalma hesaplandı (çalışma 520 − 60 dk mola)',
+    (select gec_kalma_dk = 20 and calisma_dk = 460 from test.gk('GT06', '2026-10-06')));
 
 -- 3) Kanıtla düzeltme ----------------------------------------------------
 select test.dogrula('kapı 07:40 + yürüme payı < 08:00: giriş 08:00 yazıldı (kaynak kanıt)',
@@ -154,7 +154,7 @@ select test.dogrula('30 sn sonraki ikinci giriş mükerrer işaretlendi; giriş 
 select test.dogrula('yazılı onayı olmadan 60 dk kalan için fm_onay_yok uyarısı',
     exists (select 1 from pdks.uyari where tur = 'fm_onay_yok' and calisan_id = test.c('GT07')));
 select test.dogrula('fazla mesai puantaja yazılmadı (plan yok)',
-    (select fazla_mesai_dk = 0 and calisma_dk = 540 from test.gk('GT07', '2026-10-06')));
+    (select fazla_mesai_dk = 0 and calisma_dk = 480 from test.gk('GT07', '2026-10-06')));
 select test.dogrula('yemekhane ve servis dosyası gelmedi uyarısı',
     (select count(*) = 2 from pdks.uyari where tur = 'dosya_gelmedi'
      and tekillik_anahtari in ('yemekhane:2026-10-06', 'servis:2026-10-06')));

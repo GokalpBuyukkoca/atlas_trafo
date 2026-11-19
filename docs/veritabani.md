@@ -41,10 +41,12 @@ olarak veritabanının içinde çalışır.
 | `supabase/migrations/20261121010000_puantaj.sql` | Ay kilitlenince puantaj yazılır (`normal` + `fark` satırları); günün hesap kuralı tek fonksiyonda (`gun_hesabi`) |
 | `supabase/migrations/20261122010000_izin_iptal_ve_departman_ozeti.sql` | İzin iptali (`izin_iptal`, iptal izi) ve yönetici paneli için `v_departman_ozet` |
 | `supabase/migrations/20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları ve kalemleri (+3 tablo) |
+| `supabase/migrations/20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00, esnek), esnek mesai ve `v_esnek_mesai`, otomatik vardiya tanıma (öneri amir onayıyla uygulanır), mola (m.68); vardiya düzeltmesi planlı saatleri de günceller |
 | `supabase/tests/kurallar_testi.sql` | 27 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/izin_ve_ozet_testi.sql` | İzin iptali ve departman özeti için 15 test |
 | `supabase/tests/puantaj_testi.sql` | Puantaj: kilit, normal ve fark satırları için 16 test |
 | `supabase/tests/puantaj_kurallari_testi.sql` | Tolerans, havuz, FM50 / FM100, gece çalışması, saatlik izin, kodlar ve kalemler için 68 test |
+| `supabase/tests/vardiya_kurallari_testi.sql` | Yeni vardiyalar, mola, esnek mesai, otomatik vardiya tanıma ve vardiya düzeltmesi için 24 test |
 | `supabase/tests/gece_isi_testi.sql` | Gece işi: 23 mekanik test (her zaman) + örnek veri yüklüyse S1–S23 senaryoları (26 test) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
@@ -96,8 +98,8 @@ olarak veritabanının içinde çalışır.
 | 3 Mükerrer okutma | `okutma_isareti` (`mukerrer`), eşik `ayar.mukerrer_esik_dk` |
 | 4 Kart unutma/kaybetme | Güvenlikten zimmetli **geçici kart**: `gecici_kart`, `gecici_kart_zimmet` (iade edilmemiş kart başkasına verilemez, çalışanda aynı anda tek geçici kart, zimmet silinemez). Okutmanın sahibi `okutma_sahibi()` ile bulunur; amire soru gitmez. Geçici kart yoksa `amir_sorusu.cevap = 'kart_unuttu'`. Uyarılar: `gecici_kart_cakisma`, `gecici_kart_zimmetsiz`, `gecici_kart_iade_edilmedi`, `sik_kart_unutma` (`gecici_kart_kontrol()`). Kayıp kart: `kart.durum = 'iptal'` |
 | 5 Okuyucu arızası | `okuyucu`, `ariza` (manuel ya da `otomatik_suphe`), `duzeltme.ariza_id` |
-| 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün; pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
-| 8 Vardiya değişikliği (basit) | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu` |
+| 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün (16-24 vardiyasının 00:03 çıkışı aynı güne; 00-08 vardiyası 00:00'ın gününe yazılır); pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
+| 8 Vardiya değişikliği | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu`. Okutmalar planlı vardiyaya uymuyor ama başka bir vardiyaya uyuyorsa amire `vardiya_uyusmazligi` sorusu ve öneri (`amir_sorusu.onerilen_vardiya_id`); kayıt amir onaylamadan değişmez |
 | 9 Geç kalma / erken çıkış | `gun_kaydi.gec_kalma_dk / erken_cikis_dk`, `hesap_tamam`; `resmi_tatil`; tolerans 10 / 5 dk ve isteğe bağlı yuvarlama (`tolerans_yuvarlama_dk`) |
 | 11 Excel'de düzeltme | Tüm düzeltme sistemde; `donem` kilidi ve fark satırı |
 | 12 İz olmaması | `duzeltme` (silinemez), görevler ayrılığı (kimse kendi kaydında işlem yapamaz) |
@@ -309,6 +311,8 @@ Günün dakikaları tek fonksiyonda hesaplanır: `pdks.gun_hesabi()`. Gece işi,
 | Gece çalışması (m.69) | `gun_kaydi.gece_calisma_dk`: sayılan çalışmanın 20:00–06:00 arasına düşen dakikası. `gece_calisma_sinir_dk` (450) aşılırsa `gece_calisma_siniri_asildi` uyarısı. Ücret ya da zam hesaplanmaz |
 | Saatlik izin (vizite dahil) | `saatlik_izin` (yalnızca İK girer, `saatlik_izin_gir`; silinmez, değişmez). İzinli süre geç kalma, erken çıkış ya da devamsızlık sayılmaz; çalışma dakikasına da eklenmez, `saatlik_izin_dk` olarak ayrıca tutulur. Hesaplanmış güne girilirse gün yeniden hesaplanır |
 | Resmi tatil | Okutma yoksa gün `tatil` (RT); okutma varsa çalışılmış gün olarak işlenir (FM100) |
+| Mola (m.68) | Brüt çalışma 4 saate kadar (`mola_kisa_sinir_dk`) 15 dk, 7,5 saate kadar (`mola_orta_sinir_dk`) 30 dk, üstü 60 dk (`mola_kisa_dk`, `mola_orta_dk`, `mola_uzun_dk`) düşülür; `gun_kaydi.mola_dk`. Mola önce vardiya içi kısımdan (NÇ), FM100 gününde FM100'den düşülür. Gece çalışmasından molanın gece payı (gece / brüt oranında) düşülür; ör. 22-06 vardiyası: 480 − 60 = 420 dk |
+| Esnek mesai | `vardiya_tanim.esnek` (vardiya `ESNEK`): geç kalma / erken çıkış yok, çalışma = giriş–çıkış arası (eksi mola), günlük fazla mesai ve plansız mesai uyarısı yok. Ay hedefi = planlı esnek gün (izin, rapor, tatil hariç) × `esnek_gunluk_hedef_dk` (480). `v_esnek_mesai` ve puantajdaki `esnek_hedef_dk` / `esnek_fark_dk`; fazlası kendiliğinden fazla mesai sayılmaz |
 
 Puantaj kodları (`pdks.gun_kodlari(yıl, ay)` her gün için, `puantaj_kalemi` her puantaj satırı için):
 
@@ -336,9 +340,9 @@ Dosyalar ekrandan yüklenir (`dosya_yukle`; aynı dosya ikinci kez reddedilir). 
 2. **Gün kaydı:** vardiya planı olan herkese, vardiya penceresindeki ilk giriş ve son çıkışla `gun_kaydi` açar (saatler yalnızca PDKS'den; geçici kart okutmaları `okutma_sahibi()` ile doğru kişiye). İzin → `izinli` / `raporlu`, resmi tatil → `tatil`.
 3. **Arıza şüphesi:** aynı gün bir PDKS okuyucusunda "PDKS okutması yok ama kapı kaydı var" durumundaki kişi sayısı `ayar.ariza_suphe_kisi`'ye ulaşırsa ve okuyucu o aralıkta sessizse `ariza` (`otomatik_suphe`) ve `ariza_suphesi` uyarısı.
 4. **Kanıtla düzeltme:** giriş kanıtı (kapı, yoksa servis) + yürüme payı vardiya başından önceyse giriş = vardiya başı; çıkışta kanıttaki saat. Her düzeltme `duzeltme_uygula()` ile, kanıt ve varsa arıza dayanağıyla.
-5. **Amire soru:** kanıt yoksa `giris_yok` / `cikis_yok`, hiçbir iz yoksa `hic_kayit_yok`, giriş kanıtı vardiya başından sonraysa `kanit_vardiya_sonrasi` (öneri: kanıt + yürüme payı). Soru departman amirine (izinliyse vekiline) gider; amirin kendi kaydıysa üst amirine, üst amiri yoksa İK'ya.
+5. **Amire soru:** okutmalar planlı vardiyaya uymuyor ama başka bir vardiyanın başına ve sonuna `ayar.oto_vardiya_esik_dk` (60) içinde uyuyorsa önce `vardiya_uyusmazligi` sorusu (öneri: vardiya, giriş, çıkış) açılır ve başka soru sorulmaz. Yoksa: kanıt yoksa `giris_yok` / `cikis_yok`, hiçbir iz yoksa `hic_kayit_yok`, giriş kanıtı vardiya başından sonraysa `kanit_vardiya_sonrasi` (öneri: kanıt + yürüme payı). Soru departman amirine (izinliyse vekiline) gider; amirin kendi kaydıysa üst amirine, üst amiri yoksa İK'ya.
 6. **Eskalasyon:** son cevap tarihi geçen açık soru üst amire (yoksa İK'ya) gider; `soru_eskale` uyarısı.
-7. **Hesap:** giriş ve çıkışı belli, açık sorusu olmayan günlerde geç kalma, erken çıkış (toleranslarla), çalışma dakikası ve onaylı plan kadar fazla mesai; `hesap_tamam = true`.
+7. **Hesap:** giriş ve çıkışı belli, açık sorusu olmayan günlerde geç kalma, erken çıkış (toleranslarla), mola düşülmüş çalışma dakikası, onaylı kadar fazla mesai (FM50 / FM100) ve gece çalışması; `hesap_tamam = true`. Ardından onaysız süre havuza yazılır, gece sınırı aşıldıysa uyarı verilir.
 8. **Uyarılar:** `fm_plansiz_calisma`, `fm_onay_yok`, `fm_gunluk_sinir_asildi`, `dosya_gelmedi`; geçici kart (`gecici_kart_kontrol`) ve kart paylaşımı (`kart_paylasim_kontrol`).
 
 Sistem devamsızlık kararı vermez; en fazla soru ve uyarı üretir.

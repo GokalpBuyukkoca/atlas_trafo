@@ -111,10 +111,10 @@ select test.dogrula('normal satırlar kilit öncesi canlı puantajla birebir ayn
      where s.calisilan_gun = c.calisilan_gun and s.calisma_dk = c.calisma_dk
        and s.gec_kalma_dk = c.gec_kalma_dk and s.erken_cikis_dk = c.erken_cikis_dk
        and s.fazla_mesai_dk = c.fazla_mesai_dk and s.devamsiz_gun = c.devamsiz_gun));
-select test.dogrula('PT01: 2 gün, 1080 dk çalışma',
-    (select calisilan_gun = 2 and calisma_dk = 1080 and gec_kalma_dk = 0 from test.ps('PT01', 2026, 10, 'normal')));
+select test.dogrula('PT01: 2 gün, 960 dk çalışma (2 × (540 − 60 dk mola))',
+    (select calisilan_gun = 2 and calisma_dk = 960 and gec_kalma_dk = 0 from test.ps('PT01', 2026, 10, 'normal')));
 select test.dogrula('PT02: 1 gün (6 Ekim eksik sayılmadı), 20 dk geç',
-    (select calisilan_gun = 1 and calisma_dk = 520 and gec_kalma_dk = 20 from test.ps('PT02', 2026, 10, 'normal')));
+    (select calisilan_gun = 1 and calisma_dk = 460 and gec_kalma_dk = 20 from test.ps('PT02', 2026, 10, 'normal')));
 select test.hata('puantaj satırı silinemez', 'değiştirilemez',
     $$delete from pdks.puantaj_satiri where calisan_id = test.c('PT01')$$);
 select test.hata('kilit ikinci kez yapılamaz / geri açılamaz', 'kilitli',
@@ -140,14 +140,14 @@ select test.oturum('pt_ik@ornek.test');
 select pdks.ay_kilitle(2026::smallint, 11::smallint, true);
 reset role;
 
-select test.dogrula('Kasım puantajında PT02 için Ekim kaynaklı fark: +1 gün, +540 dk',
-    (select s.calisilan_gun = 1 and s.calisma_dk = 540 and s.gec_kalma_dk = 0 and s.devamsiz_gun = 0
+select test.dogrula('Kasım puantajında PT02 için Ekim kaynaklı fark: +1 gün, +480 dk (mola düşülmüş)',
+    (select s.calisilan_gun = 1 and s.calisma_dk = 480 and s.gec_kalma_dk = 0 and s.devamsiz_gun = 0
             and dk.yil = 2026 and dk.ay = 10
      from test.ps('PT02', 2026, 11, 'fark') s join pdks.donem dk on dk.id = s.kaynak_donem_id));
 select test.dogrula('düzeltmesi olmayan PT01 için fark satırı yok',
     (select (test.ps('PT01', 2026, 11, 'fark')).id is null));
 select test.dogrula('Ekim''in normal satırı değişmeden kaldı',
-    (select calisilan_gun = 1 and calisma_dk = 520 from test.ps('PT02', 2026, 10, 'normal')));
+    (select calisilan_gun = 1 and calisma_dk = 460 from test.ps('PT02', 2026, 10, 'normal')));
 
 -- 4) Gece işi aynı hesap kuralını kullanıyor (gun_hesabi) ----------------------
 select test.dogrula('gün kaydındaki dakikalar gun_hesabi ile aynı',
