@@ -123,6 +123,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261126010000_isg.sql` | Bölge yetkisi, İSG eğitimi / sağlık muayenesi geçerlilik tarihleri ve uyarıları (kapı kilitlenmez) |
 | `20261127010000_bolge_yetkisi_izi.sql` | Bölge yetkisinin verilme / kaldırılma izi |
 | `20261127020000_erp_aktarim.sql` | ERP aktarımı: kilitli ayın puantaj kodları (`v_puantaj_aktarim`) |
+| `20261128010000_dosya_yukle_duzeltmesi.sql` | `dosya_yukle`: dosyanın SHA-256 özeti, doğru satır sayısı, satır satır sunucu denetimi |
 
 ---
 
@@ -189,7 +190,7 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Örnek veri: Kasım 2026, 19 departman, 76 çalışan, 23 senaryo (37 test) | ✅ |
 | Mavi / beyaz yaka, İSG uzmanı ve sistem yöneticisi rolleri, kullanıcı ve ayar yönetimi (35 test) | ✅ |
 | İSG: bölge yetkisi (verilme / kaldırılma izi dahil), eğitim / muayene geçerliliği, yalnızca uyarı (30 test) | ✅ |
-| CSV içe aktarma (Papa Parse): dosya okuma ve denetim var; veritabanına yükleme (`dosya_yukle`) bağlı değil | 🟡 Kısmen |
+| CSV içe aktarma (Papa Parse): ekranda denetim ve Yükle düğmesi `dosya_yukle`'ye bağlı (24 test) | ✅ |
 | Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ✅ |
 | Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |
 | İK ekranı (uyarılar, kararlar, ay kilidi) | ⬜ Yapılacak |

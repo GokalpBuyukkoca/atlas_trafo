@@ -73,7 +73,7 @@ export default async function VeriAktarimiSayfasi() {
       {kullanici.rol === "ik" && (
         <section aria-labelledby="yukle-baslik" className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <h2 id="yukle-baslik" className="text-lg font-semibold">Dosya denetle</h2>
+            <h2 id="yukle-baslik" className="text-lg font-semibold">Dosya yükle</h2>
             <p className="text-sm text-muted-foreground">
               Biçim: başlık satırı <code className="font-mono">okuyucu;kart_no;zaman;yon</code>, zaman Türkiye saatiyle
               (<code className="font-mono">2026-11-26 08:01</code>). Dosya adına günü yazın:{" "}
