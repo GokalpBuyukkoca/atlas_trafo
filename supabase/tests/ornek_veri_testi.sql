@@ -35,11 +35,15 @@ do $$ begin
 end $$;
 
 -- Büyüklük ve bütünlük --------------------------------------------------------
-select test.dogrula('31 çalışan, 4 departman', (select count(*) from pdks.calisan) = 31 and (select count(*) from pdks.departman) = 4);
-select test.dogrula('8 kullanıcı: 2 İK, 4 amir, 1 güvenlik, 1 yönetici',
-    (select count(*) from pdks.kullanici) = 8
+select test.dogrula('76 çalışan, 19 departman (9 mavi, 10 beyaz yaka)',
+    (select count(*) from pdks.calisan) = 76 and (select count(*) from pdks.departman) = 19
+    and (select count(*) from pdks.departman where yaka = 'mavi') = 9);
+select test.dogrula('25 kullanıcı: 2 İK, 19 amir, 1 güvenlik, 1 yönetici, 1 İSG, 1 admin',
+    (select count(*) from pdks.kullanici) = 25
     and (select count(*) from pdks.kullanici where rol = 'ik') = 2
-    and (select count(*) from pdks.kullanici where rol = 'amir') = 4);
+    and (select count(*) from pdks.kullanici where rol = 'amir') = 19
+    and (select count(*) from pdks.kullanici where rol = 'isg') = 1
+    and (select count(*) from pdks.kullanici where rol = 'admin') = 1);
 select test.dogrula('her kullanıcı bir çalışana bağlı', not exists (select 1 from pdks.kullanici where calisan_id is null));
 select test.dogrula('kullanıcı e-postaları yalnızca örnek alan adında (example.com)',
     not exists (select 1 from pdks.kullanici where eposta not like '%@example.com'));
@@ -47,8 +51,8 @@ select test.dogrula('her departmanın amiri var', not exists (select 1 from pdks
 select test.dogrula('her çalışanın tam olarak bir aktif kartı var',
     not exists (select 1 from pdks.calisan c
                 where (select count(*) from pdks.kart k where k.calisan_id = c.id and k.durum = 'aktif') <> 1));
-select test.dogrula('Kasım hafta içi her gün herkesin vardiya planı var (31 kişi x 21 gün)',
-    (select count(*) from pdks.vardiya_plani where tarih between '2026-11-01' and '2026-11-30') = 31 * 21);
+select test.dogrula('Kasım hafta içi her gün herkesin vardiya planı var (76 kişi x 21 gün)',
+    (select count(*) from pdks.vardiya_plani where tarih between '2026-11-01' and '2026-11-30') = 76 * 21);
 select test.dogrula('her kaynaktan her gün bir dosya (27 Kasım servis hariç)',
     (select count(*) from pdks.aktarim) = 4 * 30 - 1);
 select test.dogrula('yüzlerce PDKS ve kanıt okutması var',
