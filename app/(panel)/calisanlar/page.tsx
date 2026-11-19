@@ -24,7 +24,7 @@ type CalisanSatiri = {
 };
 
 export default async function CalisanlarSayfasi({ searchParams }: PageProps<"/calisanlar">) {
-  const kullanici = await rolGerekli(["amir", "ik", "guvenlik", "yonetici"]);
+  const kullanici = await rolGerekli(["amir", "ik", "guvenlik", "yonetici", "isg", "admin"]);
   const parametre = await searchParams;
 
   // Süzgeçler adresten okunur (?ara=...&departman=...&durum=...).
@@ -117,7 +117,7 @@ export default async function CalisanlarSayfasi({ searchParams }: PageProps<"/ca
                 <TableRow key={c.id}>
                   <TableCell className="font-mono tabular-nums">{c.sicil_no}</TableCell>
                   <TableCell className="font-medium">
-                    {kullanici.rol === "guvenlik" ? (
+                    {!["amir", "ik", "yonetici"].includes(kullanici.rol) ? (
                       `${c.ad} ${c.soyad}`
                     ) : (
                       <Link href={`/calisanlar/${c.id}`} className="underline-offset-4 hover:underline">{c.ad} {c.soyad}</Link>

@@ -1,4 +1,9 @@
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { HizliIslem } from "@/components/panel/hizli-islem";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
+import { Secim } from "@/components/panel/secim";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { KAYNAK_ADI, type Kaynak, type Okuyucu } from "@/lib/aktarim/denetim";
 import { tarih, tarihSaat } from "@/lib/bicim";
@@ -6,6 +11,7 @@ import { bugun, gunEkle } from "@/lib/hafta";
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { arizaGir, arizaKarari, geceIsiTetikle } from "./actions";
 import { AktarimFormu } from "./aktarim-formu";
 
 export const metadata = { title: "Veri aktarımı" };
@@ -14,6 +20,53 @@ type Aktarim = { id: number; kaynak: Kaynak; dosya_adi: string; veri_tarihi: str
 
 const KAYNAKLAR = Object.keys(KAYNAK_ADI) as Kaynak[];
 const SON_AKTARIM_SAYISI = 20;
+const SON_GECE_ISI_SAYISI = 10;
+
+type Ariza = {
+  id: number;
+  baslangic: string;
+  bitis: string | null;
+  kaynak: "manuel" | "otomatik_suphe";
+  durum: "suphe" | "onaylandi" | "reddedildi";
+  aciklama: string | null;
+  okuyucu: { kod: string; ad: string } | null;
+};
+
+const ARIZA_DURUMU: Record<Ariza["durum"], { ad: string; tur: "default" | "secondary" | "outline" }> = {
+  suphe: { ad: "Şüphe · İK kararı bekliyor", tur: "default" },
+  onaylandi: { ad: "Arıza", tur: "secondary" },
+  reddedildi: { ad: "Reddedildi", tur: "outline" },
+};
+
+type GeceIsi = {
+  id: number;
+  islenen_gun: string;
+  durum: "calisiyor" | "basarili" | "hatali";
+  baslangic: string;
+  bitis: string | null;
+  ozet: Record<string, unknown> | null;
+  hata_mesaji: string | null;
+};
+
+const GECE_ISI_DURUMU: Record<GeceIsi["durum"], { ad: string; tur: "default" | "secondary" | "destructive" }> = {
+  calisiyor: { ad: "Çalışıyor", tur: "default" },
+  basarili: { ad: "Başarılı", tur: "secondary" },
+  hatali: { ad: "Hatalı", tur: "destructive" },
+};
+
+// Özetteki sayılardan kısa bir metin: "31 gün kaydı · 2 soru · 1 uyarı"
+function ozetMetni(ozet: GeceIsi["ozet"]): string {
+  if (!ozet) return "—";
+  const adlar: [string, string][] = [
+    ["gun_kaydi", "gün kaydı"],
+    ["duzeltme", "düzeltme"],
+    ["soru", "soru"],
+    ["eskale", "eskale"],
+    ["uyari", "uyarı"],
+  ];
+  const parcalar = adlar.filter(([k]) => typeof ozet[k] === "number" && ozet[k]).map(([k, ad]) => `${ozet[k]} ${ad}`);
+  return parcalar.join(" · ") || "Değişiklik yok";
+}
 
 export default async function VeriAktarimiSayfasi() {
   const kullanici = await rolGerekli(["ik", "yonetici"]);
@@ -27,7 +80,7 @@ export default async function VeriAktarimiSayfasi() {
     new Date(`${ayBasi}T00:00:00Z`),
   );
 
-  const [okuyucuSonucu, buAy, sonlar] = await Promise.all([
+  const [okuyucuSonucu, buAy, sonlar, geceIsiSonucu, arizaSonucu] = await Promise.all([
     supabase.from("okuyucu").select("id, kod, ad, sistem, aktif").order("kod"),
     tumSatirlar<Aktarim>((bas, son) =>
       supabase
@@ -44,12 +97,27 @@ export default async function VeriAktarimiSayfasi() {
       .order("veri_tarihi", { ascending: false })
       .order("kaynak")
       .limit(SON_AKTARIM_SAYISI),
+    supabase
+      .from("gece_isi")
+      .select("id, islenen_gun, durum, baslangic, bitis, ozet, hata_mesaji")
+      // Demo düğmesiyle çalışan günlerin başlangıç zamanı aynı olabilir; kayıt sırası esas alınır
+      .order("id", { ascending: false })
+      .limit(SON_GECE_ISI_SAYISI),
+    supabase
+      .from("ariza")
+      .select("id, baslangic, bitis, kaynak, durum, aciklama, okuyucu:okuyucu_id(kod, ad)")
+      .order("baslangic", { ascending: false })
+      .limit(20),
   ]);
   if (okuyucuSonucu.error) throw new Error(`Okuyucular okunamadı: ${okuyucuSonucu.error.message}`);
   if (sonlar.error) throw new Error(`Aktarımlar okunamadı: ${sonlar.error.message}`);
 
   const okuyucular = (okuyucuSonucu.data ?? []) as Okuyucu[];
   const sonAktarimlar = (sonlar.data ?? []) as Aktarim[];
+  const geceIsleri = (geceIsiSonucu.data ?? []) as GeceIsi[];
+  const arizalar = (arizaSonucu.data ?? []) as unknown as Ariza[];
+  const ik = kullanici.rol === "ik";
+  const dun = gunEkle(bugunTarih, -1);
 
   // Bu ay gelmeyen dosyalar: ayın ilk gününden, gelen en son dosyanın gününe kadar her gün
   // her kaynaktan bir dosya beklenir. (Gece işi de eksik dosya için "dosya_gelmedi" uyarısı üretir.)
@@ -86,6 +154,65 @@ export default async function VeriAktarimiSayfasi() {
           <AktarimFormu okuyucular={okuyucular} />
         </section>
       )}
+
+      <section aria-labelledby="gece-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 id="gece-baslik" className="text-lg font-semibold">Gece işi</h2>
+            <p className="text-sm text-muted-foreground">
+              Her gece kendiliğinden çalışır: okutmaları işaretler, günlük kayıtları kurar, kanıt varsa düzeltir, yoksa amire sorar,
+              uyarıları yazar. Demoda aşağıdaki düğmeyle de çalıştırılır.
+            </p>
+          </div>
+          {kullanici.rol === "ik" && (
+            <IslemPenceresi
+              dugme="Gece işini çalıştır"
+              dugmeTuru="default"
+              baslik="Gece işini çalıştır"
+              aciklama="Seçilen günler sırayla işlenir (en fazla 62 gün). Tekrar çalıştırmak güvenlidir: var olan kayıtlar bozulmaz, yalnızca eksikler eklenir. Verisi yüklenmemiş gün işlenmez."
+              onay="Çalıştır"
+              islem={geceIsiTetikle}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Alan etiket="Başlangıç" htmlFor="baslangic">
+                  <Input id="baslangic" name="baslangic" type="date" required defaultValue={ayBasi <= dun ? ayBasi : dun} />
+                </Alan>
+                <Alan etiket="Bitiş" htmlFor="bitis">
+                  <Input id="bitis" name="bitis" type="date" required defaultValue={dun} />
+                </Alan>
+              </div>
+            </IslemPenceresi>
+          )}
+        </div>
+        {geceIsleri.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Gece işi henüz hiç çalışmadı.</div>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>İşlenen gün</TableHead>
+                  <TableHead>Çalışma zamanı</TableHead>
+                  <TableHead>Durum</TableHead>
+                  <TableHead>Sonuç</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {geceIsleri.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell className="tabular-nums">{tarih(g.islenen_gun)}</TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{tarihSaat(g.baslangic)}</TableCell>
+                    <TableCell><Badge variant={GECE_ISI_DURUMU[g.durum].tur}>{GECE_ISI_DURUMU[g.durum].ad}</Badge></TableCell>
+                    <TableCell className="max-w-96 whitespace-normal text-sm">
+                      {g.durum === "hatali" ? <span className="text-destructive">{g.hata_mesaji ?? "—"}</span> : ozetMetni(g.ozet)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
 
       <section aria-labelledby="eksik-baslik" className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
@@ -131,6 +258,89 @@ export default async function VeriAktarimiSayfasi() {
                     <TableCell className="font-mono text-xs">{a.dosya_adi}</TableCell>
                     <TableCell className="text-right tabular-nums">{a.satir_sayisi.toLocaleString("tr-TR")}</TableCell>
                     <TableCell className="tabular-nums text-muted-foreground">{tarihSaat(a.aktarim_zamani)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="ariza-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 id="ariza-baslik" className="text-lg font-semibold">Okuyucu arızaları</h2>
+            <p className="text-sm text-muted-foreground">
+              Arıza süresince okutması eksik çalışan devamsız sayılmaz: gece işi kanıt arar, yoksa amire sorar. Hiç okutma gelmeyen
+              okuyucu için gece işi “arıza şüphesi” açar; kararı İK verir.
+            </p>
+          </div>
+          {ik && (
+            <IslemPenceresi
+              dugme="Arıza gir"
+              baslik="Okuyucu arızası"
+              aciklama="Bitişi bilinmiyorsa boş bırakın; arıza sürüyor sayılır."
+              onay="Kaydet"
+              islem={arizaGir}
+            >
+              <Alan etiket="Okuyucu" htmlFor="okuyucu_id">
+                <Secim id="okuyucu_id" name="okuyucu_id" required defaultValue="" className="h-9">
+                  <option value="" disabled>Seçin</option>
+                  {okuyucular.filter((o) => o.aktif).map((o) => (
+                    <option key={o.id} value={o.id}>{o.kod} · {o.ad}</option>
+                  ))}
+                </Secim>
+              </Alan>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Alan etiket="Başlangıç" htmlFor="ariza-bas">
+                  <Input id="ariza-bas" name="baslangic" type="datetime-local" required />
+                </Alan>
+                <Alan etiket="Bitiş (isteğe bağlı)" htmlFor="ariza-bit">
+                  <Input id="ariza-bit" name="bitis" type="datetime-local" />
+                </Alan>
+              </div>
+              <Alan etiket="Açıklama (isteğe bağlı)" htmlFor="ariza-aciklama">
+                <Textarea id="ariza-aciklama" name="aciklama" rows={2} maxLength={500} placeholder="ör. Turnike kart okuyucusu yanıt vermiyor" />
+              </Alan>
+            </IslemPenceresi>
+          )}
+        </div>
+        {arizalar.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Kayıtlı arıza yok.</div>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Okuyucu</TableHead>
+                  <TableHead>Başlangıç</TableHead>
+                  <TableHead>Bitiş</TableHead>
+                  <TableHead>Durum</TableHead>
+                  <TableHead>Açıklama</TableHead>
+                  {ik && <TableHead><span className="sr-only">İşlem</span></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {arizalar.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="font-mono">{a.okuyucu?.kod ?? "—"}</TableCell>
+                    <TableCell className="tabular-nums">{tarihSaat(a.baslangic)}</TableCell>
+                    <TableCell className="tabular-nums">{a.bitis ? tarihSaat(a.bitis) : "Sürüyor"}</TableCell>
+                    <TableCell>
+                      <Badge variant={ARIZA_DURUMU[a.durum].tur}>{ARIZA_DURUMU[a.durum].ad}</Badge>
+                      <div className="mt-1 text-xs text-muted-foreground">{a.kaynak === "manuel" ? "İK girdi" : "Gece işi buldu"}</div>
+                    </TableCell>
+                    <TableCell className="max-w-72 whitespace-normal text-sm">{a.aciklama ?? "—"}</TableCell>
+                    {ik && (
+                      <TableCell>
+                        {a.durum === "suphe" && (
+                          <div className="flex justify-end gap-2">
+                            <HizliIslem dugme="Arıza" dugmeTuru="default" islem={arizaKarari} gizli={{ ariza_id: a.id, karar: "onay" }} />
+                            <HizliIslem dugme="Arıza değil" islem={arizaKarari} gizli={{ ariza_id: a.id, karar: "ret" }} />
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

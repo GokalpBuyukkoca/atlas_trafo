@@ -2,7 +2,10 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BosDurum, RpcBekliyor } from "@/components/panel/bos-durum";
+import { BosDurum } from "@/components/panel/bos-durum";
+import { HizliIslem } from "@/components/panel/hizli-islem";
+import { IslemPenceresi } from "@/components/panel/islem-penceresi";
+import { KararAlanlari } from "@/components/panel/karar-alanlari";
 import { Secim } from "@/components/panel/secim";
 import { tekDeger } from "@/lib/arama";
 import { tarih, tarihSaat } from "@/lib/bicim";
@@ -10,6 +13,7 @@ import { ITIRAZ_DURUMU } from "@/lib/etiketler";
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { itirazIncelemeyeAl, itirazKarar } from "./actions";
 
 export const metadata = { title: "İtirazlar" };
 
@@ -31,6 +35,7 @@ export default async function ItirazlarSayfasi({ searchParams }: PageProps<"/iti
   const kullanici = await rolGerekli(["amir", "ik", "yonetici"]);
   const parametre = await searchParams;
   const tumu = tekDeger(parametre.goster) === "tumu";
+  const ik = kullanici.rol === "ik";
 
   const supabase = await sunucuIstemcisi();
   const itirazlar = await tumSatirlar<Itiraz>((bas, son) => {
@@ -83,6 +88,7 @@ export default async function ItirazlarSayfasi({ searchParams }: PageProps<"/iti
                 <TableHead>Gün</TableHead>
                 <TableHead>İtiraz</TableHead>
                 <TableHead>Durum</TableHead>
+                {ik && <TableHead><span className="sr-only">İşlem</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -111,6 +117,14 @@ export default async function ItirazlarSayfasi({ searchParams }: PageProps<"/iti
                   <TableCell>
                     <Badge variant={ITIRAZ_DURUMU[i.durum]?.tur ?? "outline"}>{ITIRAZ_DURUMU[i.durum]?.ad ?? i.durum}</Badge>
                   </TableCell>
+                  {ik && (
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        {i.durum === "acik" && <HizliIslem dugme="İncelemeye al" islem={itirazIncelemeyeAl} gizli={{ itiraz_id: i.id }} />}
+                        {(i.durum === "acik" || i.durum === "inceleniyor") && <KararPenceresi itiraz={i} />}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -119,11 +133,35 @@ export default async function ItirazlarSayfasi({ searchParams }: PageProps<"/iti
       )}
 
       {kullanici.rol !== "yonetici" && (
-        <RpcBekliyor
-          dugme={kullanici.rol === "ik" ? "İtiraz gir / karar ver" : "İtiraz gir"}
-          aciklama="İtiraz girişi ve İK kararı veritabanındaki itiraz fonksiyonları (RPC) yazılınca buradan yapılacak."
-        />
+        <p className="text-sm text-muted-foreground">
+          Yeni itiraz, çalışanın sayfasında ilgili günün yanındaki <span className="font-medium">İtiraz</span> düğmesiyle girilir.
+        </p>
       )}
     </div>
+  );
+}
+
+function KararPenceresi({ itiraz }: { itiraz: Itiraz }) {
+  const kisi = itiraz.calisan ? `${itiraz.calisan.ad} ${itiraz.calisan.soyad}` : "Çalışan";
+  return (
+    <IslemPenceresi
+      dugme="Karar ver"
+      dugmeTuru="default"
+      baslik={`${kisi} · ${itiraz.gun ? tarih(itiraz.gun.is_gunu) : ""} itirazı`}
+      aciklama={`"${itiraz.metin}"`}
+      onay="Kararı kaydet"
+      islem={itirazKarar}
+      gizli={{ itiraz_id: itiraz.id }}
+    >
+      <KararAlanlari
+        onayAdi="Kabul et"
+        retAdi="Reddet"
+        gerekceZorunlu="her_zaman"
+        retUyarisi="Red çalışan aleyhine bir karardır. Gerekçe çalışana verilecek dökümde görünür."
+      />
+      <p className="text-xs text-muted-foreground">
+        Kabul, kaydı kendiliğinden düzeltmez. Kabulden sonra çalışan sayfasında o günün &quot;Düzelt&quot; düğmesiyle düzeltmeyi bu itiraza bağlayın.
+      </p>
+    </IslemPenceresi>
   );
 }

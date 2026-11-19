@@ -2,15 +2,19 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BosDurum, RpcBekliyor } from "@/components/panel/bos-durum";
+import { BosDurum } from "@/components/panel/bos-durum";
+import { IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { Secim } from "@/components/panel/secim";
 import { tekDeger } from "@/lib/arama";
-import { saat, tarih, tarihSaat } from "@/lib/bicim";
+import { saat, tarih, tarihSaat, yerelZamanGirdisi } from "@/lib/bicim";
 import { SORU_CEVABI, SORU_DURUMU, SORU_TURU } from "@/lib/etiketler";
 import { bugun } from "@/lib/hafta";
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { soruCevapla, soruIkKarari } from "./actions";
+import { CevapAlanlari } from "./cevap-alanlari";
+import { IkKararAlanlari } from "./ik-karar-alanlari";
 
 export const metadata = { title: "Sorular" };
 
@@ -29,7 +33,14 @@ type Soru = {
   cevap_zamani: string | null;
   atanan: { ad_soyad: string } | null;
   cevaplayan: { ad_soyad: string } | null;
-  gun: { is_gunu: string; calisan: { id: number; sicil_no: string; ad: string; soyad: string } | null } | null;
+  gun: {
+    is_gunu: string;
+    planli_baslangic: string | null;
+    planli_bitis: string | null;
+    giris_zamani: string | null;
+    cikis_zamani: string | null;
+    calisan: { id: number; sicil_no: string; ad: string; soyad: string } | null;
+  } | null;
 };
 
 const SUZGECLER = {
@@ -57,7 +68,7 @@ export default async function SorularSayfasi({ searchParams }: PageProps<"/sorul
         "id, soru_turu, aciklama, onerilen_zaman, durum, olusturma_zamani, son_cevap_tarihi, " +
           "cevap, cevap_giris, cevap_cikis, cevap_aciklama, cevap_zamani, " +
           "atanan:kullanici!atanan_id(ad_soyad), cevaplayan:kullanici!cevaplayan_id(ad_soyad), " +
-          "gun:gun_kaydi_id(is_gunu, calisan:calisan_id(id, sicil_no, ad, soyad))",
+          "gun:gun_kaydi_id(is_gunu, planli_baslangic, planli_bitis, giris_zamani, cikis_zamani, calisan:calisan_id(id, sicil_no, ad, soyad))",
       )
       .order("son_cevap_tarihi")
       .order("id")
@@ -68,6 +79,7 @@ export default async function SorularSayfasi({ searchParams }: PageProps<"/sorul
 
   const bugunTarih = bugun();
   const amir = kullanici.rol === "amir";
+  const ik = kullanici.rol === "ik";
 
   return (
     <div className="flex flex-col gap-5">
@@ -107,6 +119,7 @@ export default async function SorularSayfasi({ searchParams }: PageProps<"/sorul
                 <TableHead>Son gün</TableHead>
                 <TableHead>Durum</TableHead>
                 {!amir && <TableHead>Atanan</TableHead>}
+                {(amir || ik) && <TableHead><span className="sr-only">İşlem</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -147,6 +160,16 @@ export default async function SorularSayfasi({ searchParams }: PageProps<"/sorul
                       <Badge variant={SORU_DURUMU[s.durum]?.tur ?? "outline"}>{SORU_DURUMU[s.durum]?.ad ?? s.durum}</Badge>
                     </TableCell>
                     {!amir && <TableCell className="text-muted-foreground">{s.atanan?.ad_soyad ?? "—"}</TableCell>}
+                    {amir && (
+                      <TableCell className="text-right">
+                        {(s.durum === "acik" || s.durum === "eskale") && <CevaplaPenceresi soru={s} />}
+                      </TableCell>
+                    )}
+                    {ik && (
+                      <TableCell className="text-right">
+                        {s.durum === "ik_karari_bekliyor" && <IkKararPenceresi soru={s} />}
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
@@ -155,12 +178,65 @@ export default async function SorularSayfasi({ searchParams }: PageProps<"/sorul
         </div>
       )}
 
-      {amir && (
-        <RpcBekliyor
-          dugme="Soruyu cevapla"
-          aciklama="Cevaplar (geldi / saat farklı / kartını unuttu / gelmedi / bilmiyorum) veritabanındaki soru cevaplama fonksiyonu (RPC) yazılınca buradan verilecek."
-        />
-      )}
     </div>
+  );
+}
+
+function CevaplaPenceresi({ soru }: { soru: Soru }) {
+  const g = soru.gun;
+  const kisi = g?.calisan ? `${g.calisan.ad} ${g.calisan.soyad}` : "Çalışan";
+  // "Saat farklı" seçilince yalnızca eksik saat doldurulur (önce kanıttaki öneri, yoksa plan).
+  // Kayıtlı saat boş gelir: boş alan gönderilmez, böylece değişmeyen saat için düzeltme açılmaz.
+  const girisVarsayilan = g?.giris_zamani ? "" : yerelZamanGirdisi((soru.soru_turu !== "cikis_yok" ? soru.onerilen_zaman : null) ?? g?.planli_baslangic);
+  const cikisVarsayilan = g?.cikis_zamani ? "" : yerelZamanGirdisi((soru.soru_turu === "cikis_yok" ? soru.onerilen_zaman : null) ?? g?.planli_bitis);
+  return (
+    <IslemPenceresi
+      dugme="Cevapla"
+      dugmeTuru="default"
+      baslik={`${kisi} · ${g ? tarih(g.is_gunu) : ""}`}
+      aciklama={
+        <>
+          {SORU_TURU[soru.soru_turu] ?? soru.soru_turu}. {soru.aciklama}
+          {g && ` Plan: ${saat(g.planli_baslangic)}–${saat(g.planli_bitis)}.`}
+          {soru.onerilen_zaman && ` Kanıttaki saat: ${saat(soru.onerilen_zaman)}.`}
+        </>
+      }
+      onay="Cevabı kaydet"
+      islem={soruCevapla}
+      gizli={{ soru_id: soru.id }}
+    >
+      <CevapAlanlari
+        girisVarsayilan={girisVarsayilan}
+        cikisVarsayilan={cikisVarsayilan}
+        kayitliGiris={g?.giris_zamani ? saat(g.giris_zamani) : null}
+        kayitliCikis={g?.cikis_zamani ? saat(g.cikis_zamani) : null}
+      />
+    </IslemPenceresi>
+  );
+}
+
+function IkKararPenceresi({ soru }: { soru: Soru }) {
+  const g = soru.gun;
+  const kisi = g?.calisan ? `${g.calisan.ad} ${g.calisan.soyad}` : "Çalışan";
+  return (
+    <IslemPenceresi
+      dugme="Karar ver"
+      dugmeTuru="default"
+      baslik={`${kisi} · ${g ? tarih(g.is_gunu) : ""}`}
+      aciklama={
+        <>
+          {SORU_TURU[soru.soru_turu] ?? soru.soru_turu}. Amirin cevabı: {soru.cevap ? (SORU_CEVABI[soru.cevap] ?? soru.cevap) : "—"}
+          {soru.cevap_aciklama && ` (${soru.cevap_aciklama})`}.
+        </>
+      }
+      onay="Kararı kaydet"
+      islem={soruIkKarari}
+      gizli={{ soru_id: soru.id }}
+    >
+      <IkKararAlanlari
+        girisVarsayilan={yerelZamanGirdisi(g?.giris_zamani ? null : g?.planli_baslangic)}
+        cikisVarsayilan={yerelZamanGirdisi(g?.cikis_zamani ? null : g?.planli_bitis)}
+      />
+    </IslemPenceresi>
   );
 }

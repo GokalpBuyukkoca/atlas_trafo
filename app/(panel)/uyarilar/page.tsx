@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BosDurum, RpcBekliyor } from "@/components/panel/bos-durum";
+import { BosDurum } from "@/components/panel/bos-durum";
+import { HizliIslem } from "@/components/panel/hizli-islem";
 import { Secim } from "@/components/panel/secim";
 import { tekDeger } from "@/lib/arama";
 import { tarihSaat } from "@/lib/bicim";
@@ -10,6 +11,7 @@ import { UYARI_TURU } from "@/lib/etiketler";
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { uyariGoruldu } from "./actions";
 
 export const metadata = { title: "Uyarılar" };
 
@@ -27,7 +29,7 @@ type Uyari = {
 
 // Sistem en fazla uyarı ya da şüphe üretir; çalışan aleyhine kararı İK verir.
 export default async function UyarilarSayfasi({ searchParams }: PageProps<"/uyarilar">) {
-  const kullanici = await rolGerekli(["ik", "yonetici"]);
+  const kullanici = await rolGerekli(["ik", "yonetici", "isg"]);
   const parametre = await searchParams;
   const tumu = tekDeger(parametre.goster) === "tumu";
   const tur = tekDeger(parametre.tur);
@@ -123,6 +125,11 @@ export default async function UyarilarSayfasi({ searchParams }: PageProps<"/uyar
                         Görüldü · {u.goren?.ad_soyad ?? "—"}
                         <div className="text-xs">{tarihSaat(u.gorulme_zamani)}</div>
                       </span>
+                    ) : kullanici.rol === "ik" ? (
+                      <div className="flex items-center gap-2">
+                        <Badge>Yeni</Badge>
+                        <HizliIslem dugme="Görüldü" islem={uyariGoruldu} gizli={{ uyari_id: u.id }} />
+                      </div>
                     ) : (
                       <Badge>Yeni</Badge>
                     )}
@@ -134,12 +141,6 @@ export default async function UyarilarSayfasi({ searchParams }: PageProps<"/uyar
         </div>
       )}
 
-      {kullanici.rol === "ik" && (
-        <RpcBekliyor
-          dugme="Görüldü olarak işaretle"
-          aciklama="Uyarıyı görüldü işaretlemek veritabanında bir fonksiyon (RPC) gerektiriyor; yazılınca buradan yapılacak."
-        />
-      )}
     </div>
   );
 }
