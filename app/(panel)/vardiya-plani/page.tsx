@@ -71,15 +71,13 @@ export default async function VardiyaPlaniSayfasi({ searchParams }: PageProps<"/
       return q;
     }),
     // İK izin tablosunu okur; amir ve yönetici türü gizleyen v_izin_amir görünümünü.
-    tumSatirlar<Izin>((bas, son) =>
-      supabase
-        .from(izinTuruGorur ? "izin" : "v_izin_amir")
-        .select("calisan_id, tur, baslangic, bitis")
-        .lte("baslangic", pazar)
-        .gte("bitis", pazartesi)
-        .order("id")
-        .range(bas, son),
-    ),
+    // İptal edilen izinler silinmez: izin tablosunda süzülür, görünüm onları zaten göstermez.
+    tumSatirlar<Izin>((bas, son) => {
+      const q = izinTuruGorur
+        ? supabase.from("izin").select("calisan_id, tur, baslangic, bitis").is("iptal_zamani", null)
+        : supabase.from("v_izin_amir").select("calisan_id, tur, baslangic, bitis");
+      return q.lte("baslangic", pazar).gte("bitis", pazartesi).order("id").range(bas, son);
+    }),
     tumSatirlar<FazlaMesai>((bas, son) =>
       supabase
         .from("fazla_mesai_plani")

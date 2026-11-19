@@ -1,8 +1,13 @@
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { sure, tarihSaat } from "@/lib/bicim";
 import { rolGerekli } from "@/lib/oturum";
+import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { kartIadeAl, kartVer } from "./actions";
 
 export const metadata = { title: "Geçici kartlar" };
 
@@ -34,6 +39,8 @@ const ZIMMET_ALANLARI =
 
 export default async function GeciciKartlarSayfasi() {
   const kullanici = await rolGerekli(["guvenlik", "ik", "yonetici"]);
+  // Kart verip iade alabilenler: güvenlik ve İK (veritabanı da aynısını denetler). Yönetici yalnızca okur.
+  const yazabilir = kullanici.rol === "guvenlik" || kullanici.rol === "ik";
   const supabase = await sunucuIstemcisi();
 
   const [kartSonucu, acikSonucu, sonSonucu, ayarSonucu] = await Promise.all([
@@ -48,6 +55,13 @@ export default async function GeciciKartlarSayfasi() {
       ? Promise.resolve(null)
       : supabase.from("ayar").select("deger").eq("anahtar", "gecici_kart_iade_saat").maybeSingle(),
   ]);
+
+  // Kart verirken sicil numarası listeden seçilebilsin diye aktif çalışanlar
+  const calisanlar = yazabilir
+    ? await tumSatirlar<{ sicil_no: string; ad: string; soyad: string }>((bas, son) =>
+        supabase.from("calisan").select("sicil_no, ad, soyad").eq("aktif", true).order("sicil_no").range(bas, son),
+      )
+    : [];
 
   for (const s of [kartSonucu, acikSonucu, sonSonucu]) {
     if (s.error) throw new Error(`Geçici kart bilgisi okunamadı: ${s.error.message}`);
@@ -91,6 +105,7 @@ export default async function GeciciKartlarSayfasi() {
                   <TableHead>Kimde</TableHead>
                   <TableHead>Veriliş</TableHead>
                   <TableHead>Süre</TableHead>
+                  {yazabilir && <TableHead className="w-28"><span className="sr-only">İşlem</span></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -103,12 +118,28 @@ export default async function GeciciKartlarSayfasi() {
                       <TableCell>{z ? <KisiAdi kisi={z.calisan} /> : "—"}</TableCell>
                       <TableCell className="tabular-nums">{z ? tarihSaat(z.verilis_zamani) : "—"}</TableCell>
                       <TableCell className="tabular-nums">{z ? sure(z.verilis_zamani, null, simdi) : "—"}</TableCell>
+                      {yazabilir && (
+                        <TableCell className="text-right">
+                          {z ? (
+                            <IadeAlPenceresi kartNo={k.kart_no} zimmet={z} />
+                          ) : k.durum === "aktif" ? (
+                            <KartVerPenceresi kartId={k.id} kartNo={k.kart_no} />
+                          ) : null}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </div>
+        )}
+        {yazabilir && (
+          <datalist id="calisan-listesi">
+            {calisanlar.map((c) => (
+              <option key={c.sicil_no} value={c.sicil_no}>{c.ad} {c.soyad}</option>
+            ))}
+          </datalist>
         )}
       </section>
 
@@ -163,6 +194,41 @@ export default async function GeciciKartlarSayfasi() {
         )}
       </section>
     </div>
+  );
+}
+
+function KartVerPenceresi({ kartId, kartNo }: { kartId: number; kartNo: string }) {
+  return (
+    <IslemPenceresi
+      dugme="Ver"
+      baslik={`${kartNo} kartını ver`}
+      aciklama="Kartını unutan çalışana geçici kart zimmetlenir. Kart gün sonunda iade alınmalıdır."
+      onay="Kartı ver"
+      islem={kartVer}
+      gizli={{ kart_id: kartId, kart_no: kartNo }}
+    >
+      <Alan etiket="Çalışanın sicil numarası" htmlFor="sicil" ipucu="Yazmaya başlayınca liste açılır. Kendinize kart veremezsiniz.">
+        <Input id="sicil" name="sicil" list="calisan-listesi" required autoComplete="off" inputMode="numeric" autoFocus />
+      </Alan>
+      <Alan etiket="Açıklama (isteğe bağlı)" htmlFor="aciklama">
+        <Textarea id="aciklama" name="aciklama" rows={2} maxLength={500} placeholder="ör. Kartını evde unuttu" />
+      </Alan>
+    </IslemPenceresi>
+  );
+}
+
+function IadeAlPenceresi({ kartNo, zimmet }: { kartNo: string; zimmet: ZimmetSatiri }) {
+  const kisi = zimmet.calisan ? `${zimmet.calisan.ad} ${zimmet.calisan.soyad}` : "çalışan";
+  return (
+    <IslemPenceresi
+      dugme="İade al"
+      dugmeTuru="secondary"
+      baslik={`${kartNo} kartını iade al`}
+      aciklama={`${kisi} kartı ${tarihSaat(zimmet.verilis_zamani)} tarihinde almıştı. İade zamanı şu an olarak yazılır ve sonradan değiştirilemez.`}
+      onay="İade alındı"
+      islem={kartIadeAl}
+      gizli={{ zimmet_id: zimmet.id, kart_no: kartNo }}
+    />
   );
 }
 

@@ -71,7 +71,12 @@ async function IkOzeti({ supabase, bugunTarih, saltOkur }: { supabase: Istemci; 
     say(supabase.from("fazla_mesai_plani").select("id", SAYIM).eq("durum", "talep"), "Fazla mesai talepleri"),
     say(supabase.from("gecici_kart_zimmet").select("id", SAYIM).is("iade_zamani", null), "Zimmetler"),
     say(
-      supabase.from("izin").select("id", SAYIM).lte("baslangic", bugunTarih).gte("bitis", bugunTarih),
+      supabase
+        .from("izin")
+        .select("id", SAYIM)
+        .is("iptal_zamani", null) // iptal edilen izin silinmez, yalnızca işaretlenir
+        .lte("baslangic", bugunTarih)
+        .gte("bitis", bugunTarih),
       "İzinler",
     ),
     supabase.from("vardiya_plani").select("tarih").eq("ik_onay_durumu", "bekliyor").order("tarih").limit(1).maybeSingle(),

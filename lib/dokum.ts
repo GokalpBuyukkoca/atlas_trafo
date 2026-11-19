@@ -129,16 +129,13 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
 
   const [planlar, izinler, fmler, zimmetler, gunKayitlari, duzeltmeler, tatilSonucu, kartSonucu] = await Promise.all([
     sayfali<Plan>("vardiya_plani", "tarih, ik_onay_durumu, aciklama, vardiya:vardiya_id(kod, ad)", "tarih"),
-    tumSatirlar<Izin>((bas, son) =>
-      supabase
-        .from(ikMi ? "izin" : "v_izin_amir")
-        .select("tur, baslangic, bitis")
-        .eq("calisan_id", calisanId)
-        .lte("baslangic", aySonu)
-        .gte("bitis", ayBasi)
-        .order("id")
-        .range(bas, son),
-    ),
+    // İptal edilen izinler silinmez: izin tablosunda süzülür, v_izin_amir onları zaten göstermez.
+    tumSatirlar<Izin>((bas, son) => {
+      const q = ikMi
+        ? supabase.from("izin").select("tur, baslangic, bitis").is("iptal_zamani", null)
+        : supabase.from("v_izin_amir").select("tur, baslangic, bitis");
+      return q.eq("calisan_id", calisanId).lte("baslangic", aySonu).gte("bitis", ayBasi).order("id").range(bas, son);
+    }),
     sayfali<Fm>("fazla_mesai_plani", "is_gunu, planli_dk, durum", "is_gunu"),
     // Geçici kart zimmetini amir göremez (RLS); yalnızca İK ve yönetici için okunur.
     tumunuGorur
