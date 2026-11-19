@@ -40,9 +40,11 @@ olarak veritabanının içinde çalışır.
 | `supabase/migrations/20261120010000_gece_isi.sql` | Gece işi (`gece_isi_calistir`), demo düğmesi (`gece_isi_tetikle`), pg_cron zamanlaması; üst amiri olmayan amirin kendi sorusu İK'ya gider |
 | `supabase/migrations/20261121010000_puantaj.sql` | Ay kilitlenince puantaj yazılır (`normal` + `fark` satırları); günün hesap kuralı tek fonksiyonda (`gun_hesabi`) |
 | `supabase/migrations/20261122010000_izin_iptal_ve_departman_ozeti.sql` | İzin iptali (`izin_iptal`, iptal izi) ve yönetici paneli için `v_departman_ozet` |
+| `supabase/migrations/20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları ve kalemleri (+3 tablo) |
 | `supabase/tests/kurallar_testi.sql` | 27 kural testi (her şeyi geri alır, iz bırakmaz) |
 | `supabase/tests/izin_ve_ozet_testi.sql` | İzin iptali ve departman özeti için 15 test |
 | `supabase/tests/puantaj_testi.sql` | Puantaj: kilit, normal ve fark satırları için 16 test |
+| `supabase/tests/puantaj_kurallari_testi.sql` | Tolerans, havuz, FM50 / FM100, gece çalışması, saatlik izin, kodlar ve kalemler için 68 test |
 | `supabase/tests/gece_isi_testi.sql` | Gece işi: 23 mekanik test (her zaman) + örnek veri yüklüyse S1–S23 senaryoları (26 test) |
 | `supabase/tests/fazla_mesai_testi.sql` | Fazla mesai kural testleri |
 | `supabase/tests/gecici_kart_ve_paylasim_testi.sql` | Geçici kart, kart paylaşımı ve fonksiyon yetkileri için 35 test |
@@ -96,15 +98,15 @@ olarak veritabanının içinde çalışır.
 | 5 Okuyucu arızası | `okuyucu`, `ariza` (manuel ya da `otomatik_suphe`), `duzeltme.ariza_id` |
 | 7 Gece vardiyası | `gun_kaydi.is_gunu` = vardiyanın başladığı gün; pencere `vardiya_tanim.pencere_once_dk / pencere_sonra_dk` |
 | 8 Vardiya değişikliği (basit) | `vardiya_plani` (çalışan + gün), geriye dönükse `ik_onay_durumu` |
-| 9 Geç kalma / erken çıkış | `gun_kaydi.gec_kalma_dk / erken_cikis_dk`, `hesap_tamam`; `resmi_tatil`, tolerans ayarları |
+| 9 Geç kalma / erken çıkış | `gun_kaydi.gec_kalma_dk / erken_cikis_dk`, `hesap_tamam`; `resmi_tatil`; tolerans 10 / 5 dk ve isteğe bağlı yuvarlama (`tolerans_yuvarlama_dk`) |
 | 11 Excel'de düzeltme | Tüm düzeltme sistemde; `donem` kilidi ve fark satırı |
 | 12 İz olmaması | `duzeltme` (silinemez), görevler ayrılığı (kimse kendi kaydında işlem yapamaz) |
 | 13 Ay sonu yığılması | `amir_sorusu.son_cevap_tarihi`, `eskale_*`, `kullanici.ust_amir_id`, `departman.vekil_amir_id`, `gece_isi` + `v_gece_isi_durumu` |
-| 14 İzin/rapor (basit) | `izin`; amir `v_izin_amir` görünümünden yalnızca "izinli" görür |
+| 14 İzin/rapor | `izin` (gün), `saatlik_izin` (saat aralığı, vizite dahil); amir `v_izin_amir` ve `v_saatlik_izin_amir` görünümlerinden yalnızca "izinli" / "saatlik izin" görür |
 | 16 Tesis kayıtları (basit) | `aktarim` (aynı dosya iki kez yüklenemez), `kanit_kaydi` |
 | 6 Kart paylaşımı | `kart_paylasim_kontrol()`: aynı PDKS okuyucusunda `ayar.kart_paylasim_sn` saniye içinde arka arkaya okutan iki farklı çalışan, ayda `ayar.kart_paylasim_gun` farklı günde tekrar ederse `uyari` (`kart_paylasim_suphesi`). Tek seferlik olay uyarı değil; ceza yok, karar İK'da |
-| 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, `gun_kaydi.fazla_mesai_dk`, `v_fazla_mesai_yillik` (migration 0500) |
-| 15 Bordro aktarımı | `puantaj_satiri`; Excel dosyasını uygulama SheetJS ile üretir |
+| 10 Fazla mesai | `fazla_mesai_onayi`, `fazla_mesai_plani`, onaysız fazla mesai havuzu `fazla_mesai_inceleme`, `gun_kaydi.fazla_mesai_dk` (= `fm50_dk` + `fm100_dk`), `v_fazla_mesai_yillik` |
+| 15 Bordro aktarımı | `puantaj_satiri` ve kod kırılımı `puantaj_kalemi` (NÇ, FM50, FM100, Yİ, RPR, MZR, ÜCSZ, Dİ, DVMSZ, RT, HT); Excel dosyasını uygulama SheetJS ile üretir |
 | 17 Çalışan kendi kaydını göremiyor | Çalışan isterse İK, sistemden PDF döküm verir; itirazı (`itiraz`) amir ya da İK girer, reddi yalnızca İK |
 
 ## ER diyagramı
@@ -144,6 +146,9 @@ erDiagram
     donem ||--o{ puantaj_satiri : ""
     calisan ||--o{ puantaj_satiri : ""
     calisan |o--o{ uyari : ""
+    calisan ||--o{ saatlik_izin : ""
+    gun_kaydi ||--o| fazla_mesai_inceleme : "onaysız fazla mesai"
+    puantaj_satiri ||--o{ puantaj_kalemi : "kod kırılımı"
 
     calisan {
         bigint id PK
@@ -236,7 +241,33 @@ erDiagram
         bigint calisan_id FK
         text satir_turu "normal / fark"
         int calisma_dk
+        int fm50_dk
+        int fm100_dk
+        int gece_calisma_dk
         numeric devamsiz_gun
+    }
+    puantaj_kalemi {
+        bigint id PK "SİLİNEMEZ"
+        bigint puantaj_satiri_id FK
+        text kod "NÇ / FM50 / FM100 / Yİ ..."
+        numeric gun
+        int dakika
+    }
+    fazla_mesai_inceleme {
+        bigint id PK "SİLİNEMEZ"
+        bigint gun_kaydi_id FK
+        text tur "vardiya_sonrasi / tatil_calismasi"
+        int dakika
+        text durum "inceleme_bekliyor / onaylandi / reddedildi"
+        bigint karar_veren_id FK
+    }
+    saatlik_izin {
+        bigint id PK "DEĞİŞTİRİLEMEZ"
+        bigint calisan_id FK
+        date tarih
+        timestamptz baslangic
+        timestamptz bitis
+        text tur "vizite / mazeret / diger"
     }
 ```
 
@@ -253,13 +284,49 @@ Diyagramda okunurluk için yalnızca önemli sütunlar var. `ayar`, `ayar_gecmis
 | Günlük toplam ≤ 11 saat | vardiya süresi + `planli_dk` ≤ `ayar.gunluk_azami_calisma_dk` |
 | Yılda ≤ 270 saat (takvim yılı) | onaylı planlar toplamı ≤ `ayar.fm_yillik_sinir_dk`; %80'de `uyari` (`fm_yillik_sinir_yaklasti`) |
 | Gece vardiyasına fazla mesai yok (m.69) | gece yarısını aşan vardiyaya plan girilemez |
-| Puantaja yalnızca onaylı plan kadarı girer | `gun_kaydi.fazla_mesai_dk` ≤ onaylı `planli_dk` (trigger), `puantaj_satiri.fazla_mesai_dk`, `v_puantaj_canli` |
+| Puantaja yalnızca onaylı kadarı girer | `gun_kaydi.fazla_mesai_dk` ≤ onaylı `planli_dk` + İK'nın havuzdan onayı (+ FM100 gününde vardiya süresi) (trigger), `puantaj_satiri.fazla_mesai_dk`, `v_puantaj_canli` |
+| Onaysız fazla mesai havuzu | `fazla_mesai_inceleme`: plansız ya da planı aşan süre (`vardiya_sonrasi`) ve yazılı onayı olmayanın Pazar / resmi tatil çalışması (`tatil_calismasi`) `inceleme_bekliyor` olarak bekler. Kararı yalnızca İK verir (`fazla_mesai_inceleme_karar`); ret gerekçesi zorunlu, karar değişmez, kayıt silinmez. Bekleyen kayıt varsa ay kilitlenmez (`p_zorla` ile geçilir) |
+| FM50 / FM100 | FM100 = Pazar + tam gün resmi tatil (`cumartesi_hafta_sonu = 1` ise Cumartesi de); bu günlerde yazılı onay varsa tüm çalışma FM100. Diğer günlerde vardiyayı aşan onaylı süre FM50. Gün türüne `is_gunu` (vardiyanın başladığı gün) bakılır; arife (yarım gün) normal iş günüdür |
 
 Sınırlar **onay anında** veritabanında kontrol edilir; ekran atlansa bile delinemez.
 Fazla mesai burada basitçe "planlı vardiya bitişinden sonra çalışılan süre"dir (haftalık 45 saat hesabı kapsam dışı).
 Süreler dakika olarak tutulur. Plansız ya da planı aşan çalışmayı gece işi puantaja yazmaz;
 İK'ya `fm_plansiz_calisma`, `fm_onay_yok` veya `fm_gunluk_sinir_asildi` uyarısı yazar (eşik: `ayar.fm_plansiz_esik_dk`).
 İK ekranı için `v_fazla_mesai_yillik` görünümü çalışan başına onaylı, gerçekleşen ve kalan dakikayı verir.
+
+İK havuzdaki kaydı onaylarsa süre puantaja girer. Onay sınırı aşsa da engellenmez (iş yapılmıştır);
+yıllık onaylı toplam 270 saati geçerse `fm_yillik_sinir_asildi` uyarısı yazılır. Kilitli aya ait bir kayıt
+onaylanırsa gün kaydı değişmez; etkisi (`fm50_etki_dk`, `fm100_etki_dk`, `calisma_etki_dk`) sonraki açık ayın
+puantajına fark satırı olarak girer.
+
+## Puantaj hesabı ve kodları
+
+Günün dakikaları tek fonksiyonda hesaplanır: `pdks.gun_hesabi()`. Gece işi, fark hesabı ve İK kararları onu kullanır.
+
+| Kural | Nerede |
+|---|---|
+| Tolerans | Geç kalma `gec_kalma_tolerans_dk` (10), erken çıkış `erken_cikis_tolerans_dk` (5). Tolerans içi sayılmaz; aşılınca tam dakika. `tolerans_yuvarlama_dk` > 0 ise yukarı yuvarlanır (ör. 15: 12 dk → 15 dk). Varsayılan 0 (kapalı) |
+| Gece çalışması (m.69) | `gun_kaydi.gece_calisma_dk`: sayılan çalışmanın 20:00–06:00 arasına düşen dakikası. `gece_calisma_sinir_dk` (450) aşılırsa `gece_calisma_siniri_asildi` uyarısı. Ücret ya da zam hesaplanmaz |
+| Saatlik izin (vizite dahil) | `saatlik_izin` (yalnızca İK girer, `saatlik_izin_gir`; silinmez, değişmez). İzinli süre geç kalma, erken çıkış ya da devamsızlık sayılmaz; çalışma dakikasına da eklenmez, `saatlik_izin_dk` olarak ayrıca tutulur. Hesaplanmış güne girilirse gün yeniden hesaplanır |
+| Resmi tatil | Okutma yoksa gün `tatil` (RT); okutma varsa çalışılmış gün olarak işlenir (FM100) |
+
+Puantaj kodları (`pdks.gun_kodlari(yıl, ay)` her gün için, `puantaj_kalemi` her puantaj satırı için):
+
+| Kod | Ne zaman | Gün | Dakika |
+|---|---|---|---|
+| NÇ | Normal iş gününde çalışma | 1 | çalışma − FM50 |
+| FM50 | Normal iş gününde vardiyayı aşan onaylı süre | 0 | FM50 dakikası |
+| FM100 | Pazar / resmi tatil çalışması | 1 | sayılan çalışma |
+| Yİ / MZR / ÜCSZ / Dİ | Yıllık / mazeret / ücretsiz / diğer izin | 1 | 0 |
+| RPR | Rapor | 1 | 0 |
+| DVMSZ | İK'nın devamsız kararı | 1 | 0 |
+| RT | Çalışılmayan tam gün resmi tatil | 1 | 0 |
+| HT | Vardiya planı olmayan gün (hafta tatili) | 1 | 0 |
+
+Kararı bekleyen gün (eksik, soru bekliyor, devamsızlık şüphesi) kod almaz. `gun_kodlari` izin türünü
+içerdiği için yalnızca İK ve yönetici çağırabilir. Ay kilitlenince her normal satırın kalemleri yazılır;
+fark satırının kalemleri, düzeltmeden önceki ve sonraki gün kodlarının farkıdır. Bir satırda NÇ + FM50 + FM100
+dakikaları her zaman `calisma_dk`'ya eşittir.
 
 ## Gece işi akışı (veritabanı açısından)
 
