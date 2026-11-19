@@ -52,6 +52,20 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 
 İK de bu iki fonksiyonu çağırabilir.
 
+## İSG uzmanı (isg)
+
+| Fonksiyon | Parametreler | Ne yapar |
+|---|---|---|
+| `isg_belge_gir` | `p_calisan_id`, `p_tur`, `p_gecerlilik_bitis`, `p_belge_no?` | İSG eğitimi (`isg_egitimi`) ya da periyodik sağlık muayenesi (`saglik_muayenesi`) geçerlilik tarihini girer; kayıt no döner. Sonuç / teşhis girilmez. Yenileme yeni kayıttır; en son girilen geçerlidir. Kendi belgesini giremez |
+| `bolge_yetkisi_ver` | `p_bolge_id`, `p_departman_id` | Departmana bölgeye giriş yetkisi verir |
+| `bolge_yetkisi_kaldir` | `p_bolge_id`, `p_departman_id` | Yetkiyi kaldırır |
+
+Okuma: `v_isg_durum` (çalışan ve tür başına `yok` / `dolmus` / `doluyor` / `gecerli`), `isg_belge`, `bolge`, `bolge_yetkisi`, `okuyucu`; İSG uzmanı `uyari` tablosunda yalnızca İSG ve bölge uyarılarını görür.
+
+```ts
+await supabase.schema('pdks').from('v_isg_durum').select('*').in('durum', ['yok', 'dolmus', 'doluyor'])
+```
+
 ## Sistem yöneticisi (admin)
 
 | Fonksiyon | Parametreler | Ne yapar |

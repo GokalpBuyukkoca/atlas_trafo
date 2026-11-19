@@ -55,10 +55,14 @@ Hesaplar Supabase Auth'ta (Authentication → Add user) aşağıdaki e-postalarl
 | `uretim.muduru@example.com` | Levent Sarı (4006) | amir | İdari; üç amirin üst amiri |
 | `guvenlik@example.com` | Recep Bayram (4003) | guvenlik | Çalışan listesi, geçici kartlar |
 | `fabrika.muduru@example.com` | Nur Tekin (4004) | yonetici | Her şey (yalnızca okur) |
-| `isg.uzmani@example.com` | Tuba Erkoç (6602) | isg | Çalışan listesi, departmanlar |
+| `isg.uzmani@example.com` | Tuba Erkoç (6602) | isg | Çalışan listesi, departmanlar, İSG belgeleri, bölge yetkileri, İSG / bölge uyarıları |
 | `sistem.yoneticisi@example.com` | Alper Çınar (6802) | admin | Kullanıcılar, çalışan listesi, ayarlar, okuyucular, gece işi durumu; çalışan kayıtlarını (gün kaydı, izin, puantaj) görmez |
 
 Yeni departmanların amirleri (`nuve.amiri@example.com`, `arge.amiri@example.com` … `genel.mudur@example.com`) de `kullanici` tablosunda tanımlıdır; sorular onlara gider. Demo için Auth hesabı açmak zorunlu değildir.
+
+## İSG
+
+Bölgeler: Yüksek Gerilim Test Laboratuvarı (kapı okuyucusu `YG-KAPI`) ve Boyahane (`BOYA-KAPI`). YG Test Lab'a Kalite Kontrol ve YG Test Laboratuvarı ile Bakım ve Onarım, Boyahane'ye Boyahane ve Yüzey İşlem ile Bakım ve Onarım girebilir. Mavi yakadaki 46 çalışanın hepsinin geçerli İSG eğitimi ve sağlık muayenesi kaydı var (bitişler 2027'de), bu yüzden Kasım'da İSG uyarısı çıkmaz.
 
 ## Bilerek konmuş durumlar
 
