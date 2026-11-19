@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CalisanListesi, type ListeCalisani } from "@/components/panel/calisan-listesi";
 import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { sure, tarihSaat } from "@/lib/bicim";
@@ -58,7 +59,7 @@ export default async function GeciciKartlarSayfasi() {
 
   // Kart verirken sicil numarası listeden seçilebilsin diye aktif çalışanlar
   const calisanlar = yazabilir
-    ? await tumSatirlar<{ sicil_no: string; ad: string; soyad: string }>((bas, son) =>
+    ? await tumSatirlar<ListeCalisani>((bas, son) =>
         supabase.from("calisan").select("sicil_no, ad, soyad").eq("aktif", true).order("sicil_no").range(bas, son),
       )
     : [];
@@ -135,11 +136,7 @@ export default async function GeciciKartlarSayfasi() {
           </div>
         )}
         {yazabilir && (
-          <datalist id="calisan-listesi">
-            {calisanlar.map((c) => (
-              <option key={c.sicil_no} value={c.sicil_no}>{c.ad} {c.soyad}</option>
-            ))}
-          </datalist>
+          <CalisanListesi id="calisan-listesi" calisanlar={calisanlar} />
         )}
       </section>
 

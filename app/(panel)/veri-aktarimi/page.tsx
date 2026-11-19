@@ -1,4 +1,6 @@
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { KAYNAK_ADI, type Kaynak, type Okuyucu } from "@/lib/aktarim/denetim";
 import { tarih, tarihSaat } from "@/lib/bicim";
@@ -6,6 +8,7 @@ import { bugun, gunEkle } from "@/lib/hafta";
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { geceIsiTetikle } from "./actions";
 import { AktarimFormu } from "./aktarim-formu";
 
 export const metadata = { title: "Veri aktarımı" };
@@ -14,6 +17,37 @@ type Aktarim = { id: number; kaynak: Kaynak; dosya_adi: string; veri_tarihi: str
 
 const KAYNAKLAR = Object.keys(KAYNAK_ADI) as Kaynak[];
 const SON_AKTARIM_SAYISI = 20;
+const SON_GECE_ISI_SAYISI = 10;
+
+type GeceIsi = {
+  id: number;
+  islenen_gun: string;
+  durum: "calisiyor" | "basarili" | "hatali";
+  baslangic: string;
+  bitis: string | null;
+  ozet: Record<string, unknown> | null;
+  hata_mesaji: string | null;
+};
+
+const GECE_ISI_DURUMU: Record<GeceIsi["durum"], { ad: string; tur: "default" | "secondary" | "destructive" }> = {
+  calisiyor: { ad: "Çalışıyor", tur: "default" },
+  basarili: { ad: "Başarılı", tur: "secondary" },
+  hatali: { ad: "Hatalı", tur: "destructive" },
+};
+
+// Özetteki sayılardan kısa bir metin: "31 gün kaydı · 2 soru · 1 uyarı"
+function ozetMetni(ozet: GeceIsi["ozet"]): string {
+  if (!ozet) return "—";
+  const adlar: [string, string][] = [
+    ["gun_kaydi", "gün kaydı"],
+    ["duzeltme", "düzeltme"],
+    ["soru", "soru"],
+    ["eskale", "eskale"],
+    ["uyari", "uyarı"],
+  ];
+  const parcalar = adlar.filter(([k]) => typeof ozet[k] === "number" && ozet[k]).map(([k, ad]) => `${ozet[k]} ${ad}`);
+  return parcalar.join(" · ") || "Değişiklik yok";
+}
 
 export default async function VeriAktarimiSayfasi() {
   const kullanici = await rolGerekli(["ik", "yonetici"]);
@@ -27,7 +61,7 @@ export default async function VeriAktarimiSayfasi() {
     new Date(`${ayBasi}T00:00:00Z`),
   );
 
-  const [okuyucuSonucu, buAy, sonlar] = await Promise.all([
+  const [okuyucuSonucu, buAy, sonlar, geceIsiSonucu] = await Promise.all([
     supabase.from("okuyucu").select("id, kod, ad, sistem, aktif").order("kod"),
     tumSatirlar<Aktarim>((bas, son) =>
       supabase
@@ -44,12 +78,20 @@ export default async function VeriAktarimiSayfasi() {
       .order("veri_tarihi", { ascending: false })
       .order("kaynak")
       .limit(SON_AKTARIM_SAYISI),
+    supabase
+      .from("gece_isi")
+      .select("id, islenen_gun, durum, baslangic, bitis, ozet, hata_mesaji")
+      // Demo düğmesiyle çalışan günlerin başlangıç zamanı aynı olabilir; kayıt sırası esas alınır
+      .order("id", { ascending: false })
+      .limit(SON_GECE_ISI_SAYISI),
   ]);
   if (okuyucuSonucu.error) throw new Error(`Okuyucular okunamadı: ${okuyucuSonucu.error.message}`);
   if (sonlar.error) throw new Error(`Aktarımlar okunamadı: ${sonlar.error.message}`);
 
   const okuyucular = (okuyucuSonucu.data ?? []) as Okuyucu[];
   const sonAktarimlar = (sonlar.data ?? []) as Aktarim[];
+  const geceIsleri = (geceIsiSonucu.data ?? []) as GeceIsi[];
+  const dun = gunEkle(bugunTarih, -1);
 
   // Bu ay gelmeyen dosyalar: ayın ilk gününden, gelen en son dosyanın gününe kadar her gün
   // her kaynaktan bir dosya beklenir. (Gece işi de eksik dosya için "dosya_gelmedi" uyarısı üretir.)
@@ -86,6 +128,65 @@ export default async function VeriAktarimiSayfasi() {
           <AktarimFormu okuyucular={okuyucular} />
         </section>
       )}
+
+      <section aria-labelledby="gece-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 id="gece-baslik" className="text-lg font-semibold">Gece işi</h2>
+            <p className="text-sm text-muted-foreground">
+              Her gece kendiliğinden çalışır: okutmaları işaretler, günlük kayıtları kurar, kanıt varsa düzeltir, yoksa amire sorar,
+              uyarıları yazar. Demoda aşağıdaki düğmeyle de çalıştırılır.
+            </p>
+          </div>
+          {kullanici.rol === "ik" && (
+            <IslemPenceresi
+              dugme="Gece işini çalıştır"
+              dugmeTuru="default"
+              baslik="Gece işini çalıştır"
+              aciklama="Seçilen günler sırayla işlenir (en fazla 62 gün). Tekrar çalıştırmak güvenlidir: var olan kayıtlar bozulmaz, yalnızca eksikler eklenir. Verisi yüklenmemiş gün işlenmez."
+              onay="Çalıştır"
+              islem={geceIsiTetikle}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Alan etiket="Başlangıç" htmlFor="baslangic">
+                  <Input id="baslangic" name="baslangic" type="date" required defaultValue={ayBasi <= dun ? ayBasi : dun} />
+                </Alan>
+                <Alan etiket="Bitiş" htmlFor="bitis">
+                  <Input id="bitis" name="bitis" type="date" required defaultValue={dun} />
+                </Alan>
+              </div>
+            </IslemPenceresi>
+          )}
+        </div>
+        {geceIsleri.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Gece işi henüz hiç çalışmadı.</div>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>İşlenen gün</TableHead>
+                  <TableHead>Çalışma zamanı</TableHead>
+                  <TableHead>Durum</TableHead>
+                  <TableHead>Sonuç</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {geceIsleri.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell className="tabular-nums">{tarih(g.islenen_gun)}</TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{tarihSaat(g.baslangic)}</TableCell>
+                    <TableCell><Badge variant={GECE_ISI_DURUMU[g.durum].tur}>{GECE_ISI_DURUMU[g.durum].ad}</Badge></TableCell>
+                    <TableCell className="max-w-96 whitespace-normal text-sm">
+                      {g.durum === "hatali" ? <span className="text-destructive">{g.hata_mesaji ?? "—"}</span> : ozetMetni(g.ozet)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
 
       <section aria-labelledby="eksik-baslik" className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">

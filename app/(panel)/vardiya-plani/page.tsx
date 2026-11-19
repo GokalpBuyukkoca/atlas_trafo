@@ -2,6 +2,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { CalisanListesi } from "@/components/panel/calisan-listesi";
+import { HizliIslem } from "@/components/panel/hizli-islem";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { Secim } from "@/components/panel/secim";
 import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
 import { tekDeger } from "@/lib/arama";
@@ -10,7 +15,9 @@ import { bugun, gecerliTarihMi, gunEkle, haftaBasi, haftaBasligi, haftaninGunler
 import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { tarih, tarihSaat } from "@/lib/bicim";
 import { cn } from "@/lib/utils";
+import { vardiyaPlaniGir, vardiyaPlaniOnayla } from "./actions";
 
 export const metadata = { title: "Vardiya planı" };
 
@@ -18,6 +25,15 @@ type Calisan = { id: number; sicil_no: string; ad: string; soyad: string; depart
 type Plan = { calisan_id: number; tarih: string; vardiya_id: number; geriye_donuk: boolean; ik_onay_durumu: string; aciklama: string | null };
 type Izin = { calisan_id: number; tur: string; baslangic: string; bitis: string };
 type FazlaMesai = { calisan_id: number; is_gunu: string; planli_dk: number; durum: string };
+type BekleyenPlan = {
+  id: number;
+  tarih: string;
+  aciklama: string | null;
+  giris_zamani: string;
+  calisan: { sicil_no: string; ad: string; soyad: string } | null;
+  vardiya: { ad: string } | null;
+  giren: { ad_soyad: string } | null;
+};
 type Vardiya = { id: number; kod: string; ad: string; baslangic: string; bitis: string };
 
 // İzin türü sağlık verisi içerebilir (rapor). Türü yalnızca İK görür; diğerleri "İzinli" görür.
@@ -40,6 +56,8 @@ export default async function VardiyaPlaniSayfasi({ searchParams }: PageProps<"/
   const gunler = haftaninGunleri(pazartesi);
   const departmanId = bolumNumarasi(tekDeger(parametre.departman));
   const izinTuruGorur = kullanici.rol === "ik";
+  // Planı amir ve İK girer; yönetici yalnızca okur
+  const planGirebilir = kullanici.rol === "amir" || kullanici.rol === "ik";
 
   const supabase = await sunucuIstemcisi();
 
@@ -92,6 +110,23 @@ export default async function VardiyaPlaniSayfasi({ searchParams }: PageProps<"/
 
   if (vardiyaSonucu.error) throw new Error(`Vardiyalar okunamadı: ${vardiyaSonucu.error.message}`);
   if (tatilSonucu.error) throw new Error(`Resmi tatiller okunamadı: ${tatilSonucu.error.message}`);
+
+  // İK: tüm haftalardaki onay bekleyen geriye dönük planlar
+  const bekleyenPlanlar =
+    kullanici.rol === "ik"
+      ? await tumSatirlar<BekleyenPlan>((bas, son) =>
+          supabase
+            .from("vardiya_plani")
+            .select(
+              "id, tarih, aciklama, giris_zamani, calisan:calisan_id(sicil_no, ad, soyad), " +
+                "vardiya:vardiya_id(ad), giren:kullanici!giren_id(ad_soyad)",
+            )
+            .eq("ik_onay_durumu", "bekliyor")
+            .order("tarih")
+            .order("id")
+            .range(bas, son),
+        )
+      : [];
 
   const vardiyalar = (vardiyaSonucu.data ?? []) as Vardiya[];
   const vardiyaById = new Map(vardiyalar.map((v) => [v.id, v]));
@@ -157,6 +192,73 @@ export default async function VardiyaPlaniSayfasi({ searchParams }: PageProps<"/
           <Button type="submit" size="sm">Göster</Button>
         </form>
       </div>
+
+      {planGirebilir && (
+        <div className="self-start">
+          <IslemPenceresi
+            dugme="Vardiya gir"
+            dugmeTuru="default"
+            baslik="Vardiya planı gir"
+            aciklama="Aynı güne girilen yeni plan eskisinin yerine geçer. Geçmiş güne giriş İK onayına düşer; kilitli aya giriş yapılamaz."
+            onay="Kaydet"
+            islem={vardiyaPlaniGir}
+          >
+            <Alan etiket="Çalışanın sicil numarası" htmlFor="sicil" ipucu="Yazmaya başlayınca liste açılır.">
+              <Input id="sicil" name="sicil" list="vp-calisanlar" required autoComplete="off" inputMode="numeric" />
+            </Alan>
+            <div className="grid grid-cols-2 gap-3">
+              <Alan etiket="Gün" htmlFor="tarih">
+                <Input id="tarih" name="tarih" type="date" required defaultValue={pazartesi <= bugunTarih && bugunTarih <= pazar ? bugunTarih : pazartesi} />
+              </Alan>
+              <Alan etiket="Vardiya" htmlFor="vardiya_id">
+                <Secim id="vardiya_id" name="vardiya_id" required defaultValue="" className="h-9">
+                  <option value="" disabled>Seçin</option>
+                  {vardiyalar.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {/* Adında saat yoksa (ör. "Esnek mesai") saat aralığı eklenir */}
+                      {/\d/.test(v.ad) ? v.ad : `${v.ad} (${v.baslangic.slice(0, 5)}–${v.bitis.slice(0, 5)})`}
+                    </option>
+                  ))}
+                </Secim>
+              </Alan>
+            </div>
+            <Alan etiket="Açıklama (geçmiş gün için gerekçe)" htmlFor="aciklama">
+              <Textarea id="aciklama" name="aciklama" rows={2} maxLength={500} placeholder="ör. Vardiya değişimi, A grubuna geçti" />
+            </Alan>
+          </IslemPenceresi>
+          <CalisanListesi id="vp-calisanlar" calisanlar={calisanlar} />
+        </div>
+      )}
+
+      {bekleyenPlanlar.length > 0 && (
+        <section aria-labelledby="onay-baslik" className="flex flex-col gap-3 rounded-lg border p-4">
+          <div className="flex flex-col gap-1">
+            <h2 id="onay-baslik" className="text-lg font-semibold">Onay bekleyen geriye dönük değişiklikler</h2>
+            <p className="text-sm text-muted-foreground">
+              Geçmiş güne girilen plan, onaylanana kadar puantajı değiştirmez. Planı giren kişi onaylayamaz.
+            </p>
+          </div>
+          <ul className="flex flex-col divide-y">
+            {bekleyenPlanlar.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                <div className="text-sm">
+                  <span className="font-medium">{p.calisan ? `${p.calisan.ad} ${p.calisan.soyad}` : "—"}</span>
+                  {p.calisan && <span className="font-mono text-xs text-muted-foreground"> ({p.calisan.sicil_no})</span>}
+                  {" · "}<span className="tabular-nums">{tarih(p.tarih)}</span> → {p.vardiya?.ad ?? "—"}
+                  <div className="text-xs text-muted-foreground">
+                    {p.giren?.ad_soyad ?? "—"}, {tarihSaat(p.giris_zamani)}
+                    {p.aciklama && ` · ${p.aciklama}`}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <HizliIslem dugme="Onayla" dugmeTuru="default" islem={vardiyaPlaniOnayla} gizli={{ plan_id: p.id, karar: "onay" }} />
+                  <HizliIslem dugme="Reddet" islem={vardiyaPlaniOnayla} gizli={{ plan_id: p.id, karar: "ret" }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <p className="text-sm text-muted-foreground">
         {calisanlar.length} çalışan · {izinliGun} izinli gün

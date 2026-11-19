@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
 import { tekDeger } from "@/lib/arama";
@@ -12,6 +12,8 @@ import { ayAdi, ayKaydir, saatDakika, type PuantajSatiri } from "@/lib/puantaj";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import type { ErpSatiri } from "@/lib/erp-aktarim";
+import { IslemPenceresi } from "@/components/panel/islem-penceresi";
+import { ayKilitle } from "./actions";
 import { ErpIndir } from "./erp-indir";
 import { ExcelIndir } from "./excel-indir";
 
@@ -85,6 +87,38 @@ export default async function PuantajSayfasi({ searchParams }: PageProps<"/puant
     kilitleyen: { ad_soyad: string } | null;
   } | null;
   const kilitli = donem?.durum === "kilitli";
+
+  // Kilidi engelleyen açık işler: soru, itiraz, kararı bekleyen onaysız fazla mesai
+  const ayBasi = `${ay}-01`;
+  const sonrakiAyBasi = `${ayKaydir(ay, 1)}-01`;
+  const SAYIM = { count: "exact", head: true } as const;
+  const [acikSoru, acikItiraz, bekleyenHavuz] = kilitli
+    ? [null, null, null]
+    : await Promise.all([
+        supabase
+          .from("amir_sorusu")
+          .select("id, gun:gun_kaydi_id!inner(is_gunu)", SAYIM)
+          .in("durum", ["acik", "eskale", "ik_karari_bekliyor"])
+          .gte("gun.is_gunu", ayBasi)
+          .lt("gun.is_gunu", sonrakiAyBasi),
+        supabase
+          .from("itiraz")
+          .select("id, gun:gun_kaydi_id!inner(is_gunu)", SAYIM)
+          .in("durum", ["acik", "inceleniyor"])
+          .gte("gun.is_gunu", ayBasi)
+          .lt("gun.is_gunu", sonrakiAyBasi),
+        supabase
+          .from("fazla_mesai_inceleme")
+          .select("id", SAYIM)
+          .eq("durum", "inceleme_bekliyor")
+          .gte("is_gunu", ayBasi)
+          .lt("is_gunu", sonrakiAyBasi),
+      ]);
+  const acikIsler = [
+    acikSoru?.count ? `${acikSoru.count} açık soru` : null,
+    acikItiraz?.count ? `${acikItiraz.count} açık itiraz` : null,
+    bekleyenHavuz?.count ? `${bekleyenHavuz.count} kararı bekleyen onaysız fazla mesai` : null,
+  ].filter(Boolean) as string[];
 
   // Kilitli ay: değişmez puantaj satırları. Açık ay: gün kayıtlarından canlı hesap.
   const sayilar = kilitli
@@ -232,10 +266,41 @@ export default async function PuantajSayfasi({ searchParams }: PageProps<"/puant
 
       {!kilitli && (
         <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
-          <Button disabled className="self-start">Ayı kilitle</Button>
+          <div className="self-start">
+            <IslemPenceresi
+              dugme="Ayı kilitle"
+              dugmeTuru="destructive"
+              baslik={`${ayAdi(ay)} dönemini kilitle`}
+              aciklama="Puantaj kesinleşir ve bordroya gider. Kilit geri açılamaz; sonradan gelen düzeltme sonraki aya fark satırı olarak yazılır."
+              onay="Ayı kilitle"
+              onayTuru="destructive"
+              islem={ayKilitle}
+              gizli={{ ay }}
+            >
+              {acikIsler.length > 0 ? (
+                <div className="flex flex-col gap-2 rounded-lg bg-destructive/10 p-3 text-sm">
+                  <p className="font-medium text-destructive">Bu ayda {acikIsler.join(", ")} var.</p>
+                  <p>Bunlar kapanmadan kilitlenirse sonuçları sonraki aya fark satırı olarak geçer.</p>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" name="zorla" value="evet" />
+                    Yine de kilitle
+                  </label>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-muted p-3 text-sm">Bu ayda açık soru, itiraz ya da kararı bekleyen fazla mesai yok.</p>
+              )}
+              {bekleyenGun > 0 && (
+                <p className="text-sm text-muted-foreground">{bekleyenGun} gün henüz kesinleşmemiş (eksik kayıt ya da hesap bekliyor).</p>
+              )}
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="onay" value="evet" required className="mt-0.5" />
+                Kilidin geri açılamayacağını biliyorum.
+              </label>
+            </IslemPenceresi>
+          </div>
           <p className="text-sm text-muted-foreground">
-            Kilitlenen ay geri açılamaz; sonradan gelen düzeltme sonraki aya fark satırı olarak yazılır. Açık soru ya da itiraz
-            varken kilitlenemez. Kilitleme, veritabanındaki fonksiyon (RPC) ekrana açılınca etkinleşecek.
+            Kilitlenen ay geri açılamaz; sonradan gelen düzeltme sonraki aya fark satırı olarak yazılır.
+            {acikIsler.length > 0 && ` Şu an ${acikIsler.join(", ")} var.`}
           </p>
         </div>
       )}

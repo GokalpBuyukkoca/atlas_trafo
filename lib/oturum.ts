@@ -22,6 +22,7 @@ export type OturumKullanicisi = {
   adSoyad: string;
   eposta: string;
   rol: Rol;
+  calisanId: number | null; // görevler ayrılığı: kullanıcının kendi çalışan kaydı
 };
 
 // Oturumdaki kullanıcıyı pdks.kullanici tablosundan okur.
@@ -44,7 +45,7 @@ export const oturumKullanicisi = cache(async (): Promise<OturumKullanicisi | nul
 
   const { data, error } = await supabase
     .from("kullanici")
-    .select("id, ad_soyad, eposta, rol")
+    .select("id, ad_soyad, eposta, rol, calisan_id")
     .eq("auth_kullanici_id", authId)
     .maybeSingle();
 
@@ -58,6 +59,7 @@ export const oturumKullanicisi = cache(async (): Promise<OturumKullanicisi | nul
     adSoyad: data.ad_soyad,
     eposta: data.eposta,
     rol: data.rol as Rol,
+    calisanId: data.calisan_id ?? null,
   };
 });
 

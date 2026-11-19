@@ -28,6 +28,11 @@ export type DokumGunu = {
   girisKaynagi: string | null;
   cikisKaynagi: string | null;
   durum: string | null;
+  gunKaydiId: number | null; // itiraz ve düzeltme bu kayda bağlanır
+  girisZamani: string | null; // ham değer (düzeltme penceresinin varsayılanı)
+  cikisZamani: string | null;
+  planliBaslangic: string | null;
+  planliBitis: string | null;
   calismaDk: number | null;
   gecKalmaDk: number | null;
   erkenCikisDk: number | null;
@@ -114,7 +119,7 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
   type Fm = { is_gunu: string; planli_dk: number; durum: string };
   type Zimmet = { verilis_zamani: string; iade_zamani: string | null; kart: { kart_no: string } | null };
   type Gun = {
-    is_gunu: string; giris_zamani: string | null; cikis_zamani: string | null; giris_kaynagi: string | null; cikis_kaynagi: string | null;
+    id: number; is_gunu: string; planli_baslangic: string | null; planli_bitis: string | null; giris_zamani: string | null; cikis_zamani: string | null; giris_kaynagi: string | null; cikis_kaynagi: string | null;
     durum: string; calisma_dk: number | null; gec_kalma_dk: number | null; erken_cikis_dk: number | null; fazla_mesai_dk: number | null;
   };
   type Duz = {
@@ -152,7 +157,7 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
       : Promise.resolve([] as Zimmet[]),
     sayfali<Gun>(
       "gun_kaydi",
-      "is_gunu, giris_zamani, cikis_zamani, giris_kaynagi, cikis_kaynagi, durum, calisma_dk, gec_kalma_dk, erken_cikis_dk, fazla_mesai_dk",
+      "id, is_gunu, planli_baslangic, planli_bitis, giris_zamani, cikis_zamani, giris_kaynagi, cikis_kaynagi, durum, calisma_dk, gec_kalma_dk, erken_cikis_dk, fazla_mesai_dk",
       "is_gunu",
     ),
     sayfali<Duz>(
@@ -204,6 +209,11 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
       girisKaynagi: k?.giris_kaynagi ? KAYIT_KAYNAGI[k.giris_kaynagi] : null,
       cikisKaynagi: k?.cikis_kaynagi ? KAYIT_KAYNAGI[k.cikis_kaynagi] : null,
       durum: k ? durumEtiketi(k.durum, ikMi) : null,
+      gunKaydiId: k?.id ?? null,
+      girisZamani: k?.giris_zamani ?? null,
+      cikisZamani: k?.cikis_zamani ?? null,
+      planliBaslangic: k?.planli_baslangic ?? null,
+      planliBitis: k?.planli_bitis ?? null,
       calismaDk: k?.calisma_dk ?? null,
       gecKalmaDk: k?.gec_kalma_dk ?? null,
       erkenCikisDk: k?.erken_cikis_dk ?? null,

@@ -2,6 +2,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { CalisanListesi, type ListeCalisani } from "@/components/panel/calisan-listesi";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
+import { KararAlanlari } from "@/components/panel/karar-alanlari";
 import { Secim } from "@/components/panel/secim";
 import { tekDeger } from "@/lib/arama";
 import { tarih, tarihSaat } from "@/lib/bicim";
@@ -10,6 +15,7 @@ import { rolGerekli } from "@/lib/oturum";
 import { tumSatirlar } from "@/lib/supabase/sayfali";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { fazlaMesaiKarar, fazlaMesaiTalepEt, havuzKarari } from "./actions";
 
 export const metadata = { title: "Fazla mesai" };
 
@@ -33,6 +39,31 @@ type Plan = {
   vardiya: { kod: string } | null;
   talep_eden: { ad_soyad: string } | null;
   karar_veren: { ad_soyad: string } | null;
+};
+
+// Onaysız fazla mesai havuzu (pdks.fazla_mesai_inceleme): gece işi, plansız çalışılan süreyi buraya koyar
+type HavuzKaydi = {
+  id: number;
+  is_gunu: string;
+  tur: "vardiya_sonrasi" | "tatil_calismasi";
+  dakika: number;
+  durum: "inceleme_bekliyor" | "onaylandi" | "reddedildi";
+  karar_zamani: string | null;
+  karar_aciklama: string | null;
+  fark_satiri: boolean;
+  calisan: Kisi;
+  karar_veren: { ad_soyad: string } | null;
+};
+
+const HAVUZ_TURU: Record<HavuzKaydi["tur"], string> = {
+  vardiya_sonrasi: "Vardiya sonrası",
+  tatil_calismasi: "Pazar / tatil çalışması",
+};
+
+const HAVUZ_DURUMU: Record<HavuzKaydi["durum"], { ad: string; tur: "default" | "secondary" | "destructive" }> = {
+  inceleme_bekliyor: { ad: "İK kararı bekliyor", tur: "default" },
+  onaylandi: { ad: "Onaylandı", tur: "secondary" },
+  reddedildi: { ad: "Reddedildi", tur: "destructive" },
 };
 
 type Onay = {
@@ -64,10 +95,12 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
   const bugunTarih = bugun();
   // Yazılı onaylar tablosunu yalnızca İK ve yönetici okuyabilir (RLS).
   const onaylariGorur = kullanici.rol !== "amir";
+  // Talebi amir ve İK açar; yönetici yalnızca okur
+  const talepEdebilir = kullanici.rol === "amir" || kullanici.rol === "ik";
 
   const supabase = await sunucuIstemcisi();
 
-  const [planlar, ayarSonucu, onaylar, calisanlar] = await Promise.all([
+  const [planlar, ayarSonucu, onaylar, calisanlar, listeCalisanlari, havuz] = await Promise.all([
     tumSatirlar<Plan>((bas, son) =>
       supabase
         .from("fazla_mesai_plani")
@@ -105,7 +138,29 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
             .range(bas, son),
         )
       : Promise.resolve([] as Calisan[]),
+    // Talep penceresindeki sicil önerileri (amir yalnızca kendi bölümünü görür)
+    talepEdebilir
+      ? tumSatirlar<ListeCalisani>((bas, son) =>
+          supabase.from("calisan").select("sicil_no, ad, soyad").eq("aktif", true).order("sicil_no").range(bas, son),
+        )
+      : Promise.resolve([] as ListeCalisani[]),
+    // Amir yalnızca kendi bölümünün kayıtlarını görür (RLS)
+    tumSatirlar<HavuzKaydi>((bas, son) =>
+      supabase
+        .from("fazla_mesai_inceleme")
+        .select(
+          "id, is_gunu, tur, dakika, durum, karar_zamani, karar_aciklama, fark_satiri, " +
+            "calisan:calisan_id(sicil_no, ad, soyad), karar_veren:kullanici!karar_veren_id(ad_soyad)",
+        )
+        .gte("is_gunu", `${yil}-01-01`)
+        .lte("is_gunu", `${yil}-12-31`)
+        .order("is_gunu", { ascending: false })
+        .order("id")
+        .range(bas, son),
+    ),
   ]);
+  const ik = kullanici.rol === "ik";
+  const havuzBekleyen = havuz.filter((h) => h.durum === "inceleme_bekliyor");
 
   const ayar = new Map((ayarSonucu?.data ?? []).map((a) => [a.anahtar as string, Number(a.deger)]));
   const yillikSinir = ayar.get("fm_yillik_sinir_dk") ?? VARSAYILAN_YILLIK_SINIR_DK;
@@ -145,6 +200,35 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
         </p>
       </div>
 
+      {talepEdebilir && (
+        <div className="flex flex-col gap-2 self-start">
+          <IslemPenceresi
+            dugme="Fazla mesai talebi aç"
+            dugmeTuru="default"
+            baslik="Fazla mesai talebi"
+            aciklama="Talep İK onayına gider. Çalışanın o yıl için yazılı onayı yoksa ya da günlük 11 saat aşılıyorsa veritabanı talebi reddeder."
+            onay="Talebi aç"
+            islem={fazlaMesaiTalepEt}
+          >
+            <Alan etiket="Çalışanın sicil numarası" htmlFor="sicil" ipucu="Yazmaya başlayınca liste açılır.">
+              <Input id="sicil" name="sicil" list="fm-calisanlar" required autoComplete="off" inputMode="numeric" />
+            </Alan>
+            <div className="grid grid-cols-2 gap-3">
+              <Alan etiket="Gün" htmlFor="is_gunu">
+                <Input id="is_gunu" name="is_gunu" type="date" required defaultValue={bugunTarih} />
+              </Alan>
+              <Alan etiket="Süre (saat)" htmlFor="saat">
+                <Input id="saat" name="saat" type="number" required min={0.5} max={11} step={0.5} defaultValue={2} />
+              </Alan>
+            </div>
+            <Alan etiket="Gerekçe" htmlFor="gerekce">
+              <Textarea id="gerekce" name="gerekce" rows={2} required minLength={5} maxLength={500} placeholder="ör. Sipariş teslimi için sargı işi" />
+            </Alan>
+          </IslemPenceresi>
+          <CalisanListesi id="fm-calisanlar" calisanlar={listeCalisanlari} />
+        </div>
+      )}
+
       <section aria-labelledby="planlar-baslik" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1">
@@ -182,6 +266,7 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
                   <TableHead>Gerekçe</TableHead>
                   <TableHead>Talep eden</TableHead>
                   <TableHead>Durum</TableHead>
+                  {ik && <TableHead><span className="sr-only">İşlem</span></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -204,6 +289,87 @@ export default async function FazlaMesaiSayfasi({ searchParams }: PageProps<"/fa
                         </div>
                       )}
                     </TableCell>
+                    {ik && (
+                      <TableCell className="text-right">
+                        {p.durum === "talep" && (
+                          <IslemPenceresi
+                            dugme="Karar ver"
+                            dugmeTuru="default"
+                            baslik={`${p.calisan ? `${p.calisan.ad} ${p.calisan.soyad}` : "Çalışan"} · ${tarih(p.is_gunu)} · ${saat(p.planli_dk)}`}
+                            aciklama={`Gerekçe: ${p.gerekce}. Talep eden: ${p.talep_eden?.ad_soyad ?? "—"}.`}
+                            onay="Kararı kaydet"
+                            islem={fazlaMesaiKarar}
+                            gizli={{ plan_id: p.id }}
+                          >
+                            <KararAlanlari />
+                          </IslemPenceresi>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="havuz-baslik" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id="havuz-baslik" className="text-lg font-semibold">Onaysız fazla çalışma</h2>
+          <p className="text-sm text-muted-foreground">
+            Planı olmadan vardiya sonrasında ya da tatilde çalışılan süre. İK kararına kadar puantaja girmez.
+            {havuzBekleyen.length > 0 && ` ${havuzBekleyen.length} kayıt karar bekliyor.`}
+          </p>
+        </div>
+        {havuz.length === 0 ? (
+          <BosDurum>{yil} yılında onaysız fazla çalışma kaydı yok. Kayıtlar gece işi çalışınca oluşur.</BosDurum>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Gün</TableHead>
+                  <TableHead>Çalışan</TableHead>
+                  <TableHead>Tür</TableHead>
+                  <TableHead className="text-right">Süre</TableHead>
+                  <TableHead>Durum</TableHead>
+                  {ik && <TableHead><span className="sr-only">İşlem</span></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {havuz.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell className="tabular-nums">{tarih(h.is_gunu)}</TableCell>
+                    <TableCell><KisiAdi kisi={h.calisan} /></TableCell>
+                    <TableCell>{HAVUZ_TURU[h.tur]}</TableCell>
+                    <TableCell className="text-right tabular-nums">{h.dakika} dk</TableCell>
+                    <TableCell>
+                      <Badge variant={HAVUZ_DURUMU[h.durum].tur}>{HAVUZ_DURUMU[h.durum].ad}</Badge>
+                      {h.karar_zamani && (
+                        <div className="mt-1 text-xs text-muted-foreground" title={h.karar_aciklama ?? undefined}>
+                          {h.karar_veren?.ad_soyad ?? "—"} · {tarih(h.karar_zamani)}
+                          {h.fark_satiri && " · sonraki aya fark"}
+                        </div>
+                      )}
+                    </TableCell>
+                    {ik && (
+                      <TableCell className="text-right">
+                        {h.durum === "inceleme_bekliyor" && (
+                          <IslemPenceresi
+                            dugme="Karar ver"
+                            dugmeTuru="default"
+                            baslik={`${h.calisan ? `${h.calisan.ad} ${h.calisan.soyad}` : "Çalışan"} · ${tarih(h.is_gunu)} · ${h.dakika} dk`}
+                            aciklama={`${HAVUZ_TURU[h.tur]}. Onaylanırsa puantaja fazla mesai olarak girer; ay kilitliyse sonraki aya fark satırı olur. Yıllık sınır aşılsa da onaylanır, ayrıca uyarı yazılır.`}
+                            onay="Kararı kaydet"
+                            islem={havuzKarari}
+                            gizli={{ inceleme_id: h.id }}
+                          >
+                            <KararAlanlari retUyarisi="Ret çalışan aleyhine bir karardır; süre puantaja girmez." />
+                          </IslemPenceresi>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

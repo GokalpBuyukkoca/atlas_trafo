@@ -4,15 +4,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
 import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
 import { tekDeger } from "@/lib/arama";
+import { yerelZamanGirdisi } from "@/lib/bicim";
 import { aylikDokum } from "@/lib/dokum";
 import { bugun } from "@/lib/hafta";
 import { rolGerekli } from "@/lib/oturum";
 import { ayAdi, ayKaydir, saatDakika } from "@/lib/puantaj";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { itirazGir, kayitDuzelt } from "./actions";
+import { DuzeltmeAlanlari, type DuzeltmeItirazi } from "./duzeltme-alanlari";
 import { PdfIndir } from "./pdf-indir";
 
 export const metadata = { title: "Çalışan" };
@@ -34,6 +39,30 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
   const { calisan, gunler, duzeltmeler, ozet } = dokum;
   const bugunTarih = bugun();
   const adres = (a: string) => `/calisanlar/${calisanId}?ay=${a}`;
+  // İtirazı amir ve İK girer; yönetici yalnızca okur. Kimse kendi kaydına itiraz giremez
+  // (veritabanı da reddeder; düğme hiç gösterilmez).
+  const itirazGirebilir = (kullanici.rol === "amir" || kullanici.rol === "ik") && kullanici.calisanId !== calisanId;
+  // Kaydı yalnızca İK düzeltir; kendi kaydını düzeltemez (veritabanı da reddeder)
+  const duzeltebilir = kullanici.rol === "ik" && kullanici.calisanId !== calisanId;
+  const islemSutunu = itirazGirebilir || duzeltebilir;
+
+  // Düzeltme bir itiraza bağlanabilsin diye bu ayın itirazları (gün kaydına göre)
+  const itirazByGun = new Map<number, DuzeltmeItirazi[]>();
+  if (duzeltebilir) {
+    const ids = dokum.gunler.map((g) => g.gunKaydiId).filter((x): x is number => x !== null);
+    if (ids.length) {
+      const { data } = await supabase
+        .from("itiraz")
+        .select("id, metin, durum, gun_kaydi_id")
+        .in("gun_kaydi_id", ids)
+        .order("id");
+      for (const i of (data ?? []) as (DuzeltmeItirazi & { gun_kaydi_id: number })[]) {
+        const liste = itirazByGun.get(i.gun_kaydi_id) ?? [];
+        liste.push({ id: i.id, metin: i.metin, durum: i.durum });
+        itirazByGun.set(i.gun_kaydi_id, liste);
+      }
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -83,6 +112,7 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
               <TableHead className="text-right">Çalışma</TableHead>
               <TableHead>Durum</TableHead>
               <TableHead>Not</TableHead>
+              {islemSutunu && <TableHead><span className="sr-only">İşlem</span></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -114,6 +144,43 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
                   <TableCell className="text-right tabular-nums">{g.calismaDk != null ? saatDakika(g.calismaDk) : "—"}</TableCell>
                   <TableCell>{g.durum ?? "—"}</TableCell>
                   <TableCell className="max-w-80 whitespace-normal text-sm text-muted-foreground">{notlar.join(" · ") || ""}</TableCell>
+                  {islemSutunu && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                      {duzeltebilir && g.gunKaydiId && (
+                        <IslemPenceresi
+                          dugme="Düzelt"
+                          dugmeTuru="ghost"
+                          baslik={`${calisan.adSoyad} · ${g.tarihMetni} kaydını düzelt`}
+                          aciklama={`Şu an: giriş ${g.giris ?? "—"}, çıkış ${g.cikis ?? "—"}, ${g.durum ?? "—"}.`}
+                          onay="Düzeltmeyi kaydet"
+                          islem={kayitDuzelt}
+                          gizli={{ gun_kaydi_id: g.gunKaydiId }}
+                        >
+                          <DuzeltmeAlanlari
+                            girisVarsayilan={yerelZamanGirdisi(g.girisZamani ?? g.planliBaslangic)}
+                            cikisVarsayilan={yerelZamanGirdisi(g.cikisZamani ?? g.planliBitis)}
+                            itirazlar={itirazByGun.get(g.gunKaydiId) ?? []}
+                          />
+                        </IslemPenceresi>
+                      )}
+                      {itirazGirebilir && g.gunKaydiId && (
+                        <IslemPenceresi
+                          dugme="İtiraz"
+                          dugmeTuru="ghost"
+                          baslik={`${calisan.adSoyad} · ${g.tarihMetni} itirazı`}
+                          aciklama={`Kayıt: giriş ${g.giris ?? "—"}, çıkış ${g.cikis ?? "—"}, ${g.durum ?? "—"}. Çalışanın söylediğini yazın; kabul ya da red kararını İK verir.`}
+                          onay="İtirazı kaydet"
+                          islem={itirazGir}
+                          gizli={{ gun_kaydi_id: g.gunKaydiId }}
+                        >
+                          <label htmlFor="metin" className="text-sm font-medium">İtiraz</label>
+                          <Textarea id="metin" name="metin" rows={3} required minLength={5} maxLength={1000} placeholder="ör. 08:00'de geldim, kartım okumadı" />
+                        </IslemPenceresi>
+                      )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}
