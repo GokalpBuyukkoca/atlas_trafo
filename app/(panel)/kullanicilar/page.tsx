@@ -1,0 +1,164 @@
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CalisanListesi, type ListeCalisani } from "@/components/panel/calisan-listesi";
+import { Alan, IslemPenceresi } from "@/components/panel/islem-penceresi";
+import { Secim } from "@/components/panel/secim";
+import { ROL_ADI, rolGerekli, type Rol } from "@/lib/oturum";
+import { tumSatirlar } from "@/lib/supabase/sayfali";
+import { sunucuIstemcisi } from "@/lib/supabase/server";
+import { kullaniciEkle, kullaniciGuncelle } from "./actions";
+
+export const metadata = { title: "Kullanıcılar" };
+
+type Kullanici = {
+  id: number;
+  ad_soyad: string;
+  eposta: string;
+  rol: Rol;
+  aktif: boolean;
+  ust_amir_id: number | null;
+  auth_kullanici_id: string | null;
+  calisan: { sicil_no: string } | null;
+};
+
+// Sistem yöneticisi: kimin hangi rolle gireceğini yönetir. Çalışan kayıtları üzerinde karar veremez;
+// kendi hesabını değiştiremez (görevler ayrılığı).
+export default async function KullanicilarSayfasi() {
+  const kullanici = await rolGerekli(["admin"]);
+  const supabase = await sunucuIstemcisi();
+
+  const [kullanicilar, calisanlar] = await Promise.all([
+    tumSatirlar<Kullanici>((bas, son) =>
+      supabase
+        .from("kullanici")
+        .select("id, ad_soyad, eposta, rol, aktif, ust_amir_id, auth_kullanici_id, calisan:calisan_id(sicil_no)")
+        .order("rol")
+        .order("ad_soyad")
+        .range(bas, son),
+    ),
+    tumSatirlar<ListeCalisani>((bas, son) =>
+      supabase.from("calisan").select("sicil_no, ad, soyad").eq("aktif", true).order("sicil_no").range(bas, son),
+    ),
+  ]);
+
+  const adById = new Map(kullanicilar.map((k) => [k.id, k.ad_soyad]));
+  const amirler = kullanicilar.filter((k) => k.aktif && (k.rol === "amir" || k.rol === "yonetici"));
+  const roller = Object.entries(ROL_ADI) as [Rol, string][];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Kullanıcılar</h1>
+        <p className="text-sm text-muted-foreground">
+          Sisteme giren her kişi bir çalışan kaydına bağlıdır. Giriş hesabı Supabase Auth&apos;ta aynı e-postayla açılır; açılınca
+          kendiliğinden bağlanır. Kullanıcı silinmez, pasif yapılır.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {kullanicilar.length} kullanıcı · {kullanicilar.filter((k) => !k.auth_kullanici_id).length} tanesinin giriş hesabı yok
+        </p>
+        <IslemPenceresi
+          dugme="Kullanıcı ekle"
+          dugmeTuru="default"
+          baslik="Yeni kullanıcı"
+          aciklama="Kendinize hesap açamazsınız. Aynı e-posta ya da hesabı olan çalışan reddedilir."
+          onay="Ekle"
+          islem={kullaniciEkle}
+        >
+          <Alan etiket="Çalışanın sicil numarası" htmlFor="sicil" ipucu="Yazmaya başlayınca liste açılır.">
+            <Input id="sicil" name="sicil" list="k-calisanlar" required autoComplete="off" inputMode="numeric" />
+          </Alan>
+          <Alan etiket="Ad soyad" htmlFor="ad_soyad">
+            <Input id="ad_soyad" name="ad_soyad" required minLength={3} maxLength={100} />
+          </Alan>
+          <Alan etiket="E-posta" htmlFor="eposta">
+            <Input id="eposta" name="eposta" type="email" required maxLength={200} />
+          </Alan>
+          <div className="grid grid-cols-2 gap-3">
+            <Alan etiket="Rol" htmlFor="rol">
+              <Secim id="rol" name="rol" required defaultValue="" className="h-9">
+                <option value="" disabled>Seçin</option>
+                {roller.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Secim>
+            </Alan>
+            <Alan etiket="Üst amir (isteğe bağlı)" htmlFor="ust_amir_id">
+              <Secim id="ust_amir_id" name="ust_amir_id" defaultValue="" className="h-9">
+                <option value="">Yok</option>
+                {amirler.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
+              </Secim>
+            </Alan>
+          </div>
+        </IslemPenceresi>
+        <CalisanListesi id="k-calisanlar" calisanlar={calisanlar} />
+      </div>
+
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Ad soyad</TableHead>
+              <TableHead>E-posta</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Üst amir</TableHead>
+              <TableHead>Durum</TableHead>
+              <TableHead><span className="sr-only">İşlem</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {kullanicilar.map((k) => (
+              <TableRow key={k.id} className={k.aktif ? undefined : "text-muted-foreground"}>
+                <TableCell>
+                  {k.ad_soyad}
+                  {k.calisan && <span className="ml-1 font-mono text-xs text-muted-foreground">({k.calisan.sicil_no})</span>}
+                </TableCell>
+                <TableCell className="text-sm">{k.eposta}</TableCell>
+                <TableCell>{ROL_ADI[k.rol] ?? k.rol}</TableCell>
+                <TableCell className="text-sm">{k.ust_amir_id ? (adById.get(k.ust_amir_id) ?? "—") : "—"}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {k.aktif ? <Badge variant="secondary">Aktif</Badge> : <Badge variant="outline">Pasif</Badge>}
+                    {!k.auth_kullanici_id && <Badge variant="outline">Giriş hesabı yok</Badge>}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  {k.id !== kullanici.id && (
+                    <IslemPenceresi
+                      dugme="Düzenle"
+                      dugmeTuru="ghost"
+                      baslik={k.ad_soyad}
+                      aciklama="Rol değişikliği bir sonraki girişte geçerli olur. Pasif kullanıcı giriş yapamaz."
+                      onay="Kaydet"
+                      islem={kullaniciGuncelle}
+                      gizli={{ kullanici_id: k.id }}
+                    >
+                      <div className="grid grid-cols-2 gap-3">
+                        <Alan etiket="Rol" htmlFor={`rol-${k.id}`}>
+                          <Secim id={`rol-${k.id}`} name="rol" defaultValue={k.rol} className="h-9">
+                            {roller.map(([r, ad]) => <option key={r} value={r}>{ad}</option>)}
+                          </Secim>
+                        </Alan>
+                        <Alan etiket="Üst amir" htmlFor={`ust-${k.id}`} ipucu="Kaldırılamaz, yalnızca değiştirilir.">
+                          <Secim id={`ust-${k.id}`} name="ust_amir_id" defaultValue={k.ust_amir_id ?? ""} className="h-9">
+                            <option value="">Değiştirme</option>
+                            {amirler.filter((a) => a.id !== k.id).map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
+                          </Secim>
+                        </Alan>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="aktif" value="evet" defaultChecked={k.aktif} />
+                        Aktif
+                      </label>
+                    </IslemPenceresi>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

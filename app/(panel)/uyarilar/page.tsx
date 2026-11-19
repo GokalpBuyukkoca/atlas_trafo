@@ -29,7 +29,7 @@ type Uyari = {
 
 // Sistem en fazla uyarı ya da şüphe üretir; çalışan aleyhine kararı İK verir.
 export default async function UyarilarSayfasi({ searchParams }: PageProps<"/uyarilar">) {
-  const kullanici = await rolGerekli(["ik", "yonetici"]);
+  const kullanici = await rolGerekli(["ik", "yonetici", "isg"]);
   const parametre = await searchParams;
   const tumu = tekDeger(parametre.goster) === "tumu";
   const tur = tekDeger(parametre.tur);
