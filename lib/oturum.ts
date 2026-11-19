@@ -6,13 +6,15 @@ import { supabaseAyarlari } from "@/lib/supabase/ayarlar";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 
 // Veritabanındaki roller (pdks.kullanici.rol)
-export type Rol = "amir" | "ik" | "guvenlik" | "yonetici";
+export type Rol = "amir" | "ik" | "guvenlik" | "yonetici" | "isg" | "admin";
 
 export const ROL_ADI: Record<Rol, string> = {
   amir: "Amir",
   ik: "İnsan Kaynakları",
   guvenlik: "Güvenlik",
   yonetici: "Yönetici",
+  isg: "İSG Uzmanı",
+  admin: "Sistem Yöneticisi",
 };
 
 export type OturumKullanicisi = {

@@ -38,7 +38,7 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 |---|---|---|
 | Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 31 tablo |
 | İş kuralları | PostgreSQL fonksiyonları ve trigger'lar | Gece işi, düzeltme, görevler ayrılığı, ay kilidi veritabanının içinde çalışır; ekran atlansa bile kural delinemez |
-| Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
+| Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`, `isg`, `admin`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
 | Frontend | **Next.js + TypeScript** | Tailwind CSS + shadcn/ui |
 | Veri bağlantısı | supabase-js | Veritabanı fonksiyonları RPC ile çağrılır |
 | CSV okuma | Papa Parse | PDKS, kapı, yemekhane, servis dosyaları |
@@ -88,7 +88,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 
 | Grup | Tablolar |
 |---|---|
-| Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici), departman, calisan, kart, gecici_kart, gecici_kart_zimmet |
+| Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici, İSG, admin), departman (mavi / beyaz yaka), calisan, kart, gecici_kart, gecici_kart_zimmet |
 | Vardiya, izin, ayar | vardiya_tanim, vardiya_plani, izin, saatlik_izin, resmi_tatil, ayar, ayar_gecmisi |
 | Ham veri (değiştirilemez) | aktarim, okuyucu, ham_okutma, kanit_kaydi, okutma_isareti |
 | İşleme | gece_isi, ariza, uyari |
@@ -117,6 +117,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261122010000_izin_iptal_ve_departman_ozeti.sql` | İzin iptali, yönetici paneli için departman özeti |
 | `20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları |
 | `20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar, esnek mesai, otomatik vardiya tanıma, mola (m.68) |
+| `20261125010000_organizasyon_ve_roller.sql` | Mavi / beyaz yaka, `isg` ve `admin` rolleri, kullanıcı ve ayar yönetimi (admin) |
 
 ---
 
@@ -179,7 +180,9 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Tolerans 10 / 5 dk ve yuvarlama ayarı | ✅ |
 | FM50 / FM100, gece çalışması (m.69), puantaj kodları ve kalemleri (68 test) | ✅ |
 | Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00), esnek mesai, otomatik vardiya tanıma, mola (24 test) | ✅ |
-| Örnek veri: Kasım 2026, 31 çalışan, 23 senaryo (37 test) | ✅ |
+| Esnek mesaide PDKS girişi eksikse amire soru yerine kanıt saatini (kapı / servis + yürüme payı) doğrudan yazmak | ⬜ Yapılacak |
+| Örnek veri: Kasım 2026, 19 departman, 76 çalışan, 23 senaryo (37 test) | ✅ |
+| Mavi / beyaz yaka, İSG uzmanı ve sistem yöneticisi rolleri, kullanıcı ve ayar yönetimi (35 test) | ✅ |
 | CSV içe aktarma (Papa Parse): dosya okuma ve denetim var; veritabanına yükleme (`dosya_yukle`) bağlı değil | 🟡 Kısmen |
 | Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ✅ |
 | Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |

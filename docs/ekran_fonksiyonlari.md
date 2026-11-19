@@ -52,6 +52,16 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 
 İK de bu iki fonksiyonu çağırabilir.
 
+## Sistem yöneticisi (admin)
+
+| Fonksiyon | Parametreler | Ne yapar |
+|---|---|---|
+| `kullanici_ekle` | `p_ad_soyad`, `p_eposta`, `p_rol`, `p_calisan_id`, `p_ust_amir_id?` | Sisteme giren kişiyi tanımlar; kullanıcı no döner. Giriş hesabı Supabase Auth'ta aynı e-postayla açılır; hesap varsa hemen bağlanır. Aynı e-posta ya da hesabı olan çalışan reddedilir. Admin kendine hesap açamaz |
+| `kullanici_guncelle` | `p_kullanici_id`, `p_rol?`, `p_ust_amir_id?`, `p_aktif?` | Rolü, üst amiri ya da aktifliği değiştirir (gönderilmeyen değişmez); Auth hesabı sonradan açıldıysa bağlar. Admin kendi hesabını değiştiremez |
+| `ayar_guncelle` | `p_anahtar`, `p_deger` | Ayar değerini değiştirir (tolerans, mola, eşikler …); eski / yeni değer ve değiştiren `ayar_gecmisi`'ne yazılır |
+
+Admin çalışan kayıtları üzerinde karar veremez: düzeltme, izin, itiraz, fazla mesai, ay kilidi ve soru cevabı fonksiyonları admin için `Bu işlem için yetkiniz yok.` hatası verir.
+
 ## İK
 
 | Fonksiyon | Parametreler | Ne yapar |

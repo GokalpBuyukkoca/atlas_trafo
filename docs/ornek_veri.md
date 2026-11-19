@@ -17,14 +17,29 @@ Seed ikinci kez çalıştırılırsa hiçbir şey yazmadan durur. Yerelde `supab
 
 ## Organizasyon
 
-| Departman | Çalışanlar | Vardiya |
-|---|---|---|
-| Montaj | 1001–1010 | Gündüz 08:00–17:00 |
-| Bobinaj | 2001 (amir, gündüz); A: 2002–2004, B: 2005–2007, C: 2008–2010 | Gruplar haftalık döner: V1 06–14, V2 14–22, V3 22–06 |
-| Kalite | 3001–3005 | Gündüz |
-| İdari | 4001–4006 | Gündüz |
+| Departman | Yaka | Çalışanlar | Vardiya |
+|---|---|---|---|
+| Aktif Kısım ve Montaj | mavi | 1001–1010 | Gündüz 08:00–17:00 |
+| Bobinaj | mavi | 2001 (amir, gündüz); A: 2002–2004, B: 2005–2007, C: 2008–2010 | Gruplar haftalık döner: V1 06–14, V2 14–22, V3 22–06 |
+| Kalite Kontrol ve YG Test Laboratuvarı | mavi | 3001–3005 | Gündüz 08:00–17:00 |
+| İdari İşler | mavi | 4001–4006 | Gündüz 08:00–17:00 |
+| Nüve Dizme | mavi | 5001 (amir); 5002, 5003 | Amir 08–16; işçiler 08–16 / 16–24 / 00–08 haftalık dönüşümlü |
+| Kazan İmalat ve Kaynak | mavi | 5101 (amir); 5102, 5103 | Amir 08–16; işçiler 08–16 / 16–24 / 00–08 haftalık dönüşümlü |
+| Boyahane ve Yüzey İşlem | mavi | 5201–5203 | 08–16 |
+| Bakım ve Onarım | mavi | 5301–5303 | 08–16 |
+| Depo ve Sevkiyat | mavi | 5401–5403 | 08–16 |
+| Ar-Ge ve Tasarım | beyaz | 6001 (amir); 6002, 6003 | Amir 08:30–18:00; çalışanlar esnek mesai |
+| Üretim Planlama | beyaz | 6101–6103 | 08:30–18:00 |
+| Satış ve Pazarlama | beyaz | 6201 (amir); 6202, 6203 | Amir 08:30–18:00; çalışanlar esnek mesai |
+| Dış Ticaret ve Lojistik | beyaz | 6301–6303 | 08:30–18:00 |
+| Satın Alma | beyaz | 6401–6403 | 08:30–18:00 |
+| İnsan Kaynakları | beyaz | 6501–6503 | 08:30–18:00 |
+| İSG | beyaz | 6601–6603 | 08:30–18:00 |
+| Finans ve Muhasebe | beyaz | 6701–6703 | 08:30–18:00 |
+| Bilgi İşlem | beyaz | 6801–6803 | 08:30–18:00 |
+| Üst Yönetim | beyaz | 6901–6903 | 08:30–18:00 |
 
-31 çalışan, 32 kart. Hafta içi her gün herkesin vardiya planı var (2–30 Kasım). Montaj, Kalite ve İdari ana giriş PDKS'sini (PDKS-1), Bobinaj atölye PDKS'sini (PDKS-2) kullanır. Herkes kapı turnikesinden geçer ve yemekhanede okutur; bazı çalışanlar servisle gelir (SRV-1, SRV-2).
+76 çalışan, 77 kart, 19 departman (9 mavi, 10 beyaz yaka). Hafta içi her gün herkesin vardiya planı var (2–30 Kasım). Her departmanın amiri grubun ilk siciliyle başlar (İdari İşler'in amiri üretim müdürü Levent Sarı). Mavi yaka amirlerinin üst amiri üretim müdürü, beyaz yaka amirlerinin üst amiri genel müdür Rıza Kalkan (6901). Esnek mesaili çalışanlar 08:00–09:30 arasında gelir, günde ortalama 9 saat kalır. Bobinaj atölye PDKS'sini (PDKS-2), diğer herkes ana giriş PDKS'sini (PDKS-1) kullanır. Herkes kapı turnikesinden geçer ve yemekhanede okutur; bazı çalışanlar servisle gelir (SRV-1, SRV-2).
 
 ## Demo hesapları
 
@@ -40,6 +55,10 @@ Hesaplar Supabase Auth'ta (Authentication → Add user) aşağıdaki e-postalarl
 | `uretim.muduru@example.com` | Levent Sarı (4006) | amir | İdari; üç amirin üst amiri |
 | `guvenlik@example.com` | Recep Bayram (4003) | guvenlik | Çalışan listesi, geçici kartlar |
 | `fabrika.muduru@example.com` | Nur Tekin (4004) | yonetici | Her şey (yalnızca okur) |
+| `isg.uzmani@example.com` | Tuba Erkoç (6602) | isg | Çalışan listesi, departmanlar |
+| `sistem.yoneticisi@example.com` | Alper Çınar (6802) | admin | Kullanıcılar, çalışan listesi, ayarlar, okuyucular, gece işi durumu; çalışan kayıtlarını (gün kaydı, izin, puantaj) görmez |
+
+Yeni departmanların amirleri (`nuve.amiri@example.com`, `arge.amiri@example.com` … `genel.mudur@example.com`) de `kullanici` tablosunda tanımlıdır; sorular onlara gider. Demo için Auth hesabı açmak zorunlu değildir.
 
 ## Bilerek konmuş durumlar
 
