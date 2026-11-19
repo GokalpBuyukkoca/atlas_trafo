@@ -116,6 +116,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261121010000_puantaj.sql` | Ay kilidinde puantaj (`normal` + `fark` satırları) |
 | `20261122010000_izin_iptal_ve_departman_ozeti.sql` | İzin iptali, yönetici paneli için departman özeti |
 | `20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları |
+| `20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar, esnek mesai, otomatik vardiya tanıma, mola (m.68) |
 
 ---
 
@@ -177,6 +178,7 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Saatlik izin (vizite dahil) | ✅ |
 | Tolerans 10 / 5 dk ve yuvarlama ayarı | ✅ |
 | FM50 / FM100, gece çalışması (m.69), puantaj kodları ve kalemleri (68 test) | ✅ |
+| Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00), esnek mesai, otomatik vardiya tanıma, mola (24 test) | ✅ |
 | Örnek veri: Kasım 2026, 31 çalışan, 23 senaryo (37 test) | ✅ |
 | CSV içe aktarma (Papa Parse): dosya okuma ve denetim var; veritabanına yükleme (`dosya_yukle`) bağlı değil | 🟡 Kısmen |
 | Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ✅ |
