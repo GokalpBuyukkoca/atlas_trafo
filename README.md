@@ -36,7 +36,7 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 
 | Katman | Teknoloji | Not |
 |---|---|---|
-| Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 31 tablo |
+| Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 34 tablo |
 | İş kuralları | PostgreSQL fonksiyonları ve trigger'lar | Gece işi, düzeltme, görevler ayrılığı, ay kilidi veritabanının içinde çalışır; ekran atlansa bile kural delinemez |
 | Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`, `isg`, `admin`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
 | Frontend | **Next.js + TypeScript** | Tailwind CSS + shadcn/ui |
@@ -84,13 +84,14 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 
 ## 4. Veritabanı
 
-`pdks` şemasında **31 tablo** (temel 24 + fazla mesai 2 + geçici kart 2 + puantaj kuralları 3). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
+`pdks` şemasında **34 tablo** (temel 24 + fazla mesai 2 + geçici kart 2 + puantaj kuralları 3 + İSG 3). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
 
 | Grup | Tablolar |
 |---|---|
 | Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici, İSG, admin), departman (mavi / beyaz yaka), calisan, kart, gecici_kart, gecici_kart_zimmet |
 | Vardiya, izin, ayar | vardiya_tanim, vardiya_plani, izin, saatlik_izin, resmi_tatil, ayar, ayar_gecmisi |
 | Ham veri (değiştirilemez) | aktarim, okuyucu, ham_okutma, kanit_kaydi, okutma_isareti |
+| İSG | bolge, bolge_yetkisi, isg_belge (yalnızca geçerlilik tarihi) |
 | İşleme | gece_isi, ariza, uyari |
 | Gün, karar, düzeltme, dönem | gun_kaydi, amir_sorusu, itiraz, duzeltme, donem, puantaj_satiri, puantaj_kalemi |
 | Fazla mesai | fazla_mesai_onayi, fazla_mesai_plani, fazla_mesai_inceleme (onaysız fazla mesai havuzu) |
@@ -118,6 +119,7 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları |
 | `20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar, esnek mesai, otomatik vardiya tanıma, mola (m.68) |
 | `20261125010000_organizasyon_ve_roller.sql` | Mavi / beyaz yaka, `isg` ve `admin` rolleri, kullanıcı ve ayar yönetimi (admin) |
+| `20261126010000_isg.sql` | Bölge yetkisi, İSG eğitimi / sağlık muayenesi geçerlilik tarihleri ve uyarıları (kapı kilitlenmez) |
 
 ---
 
@@ -183,6 +185,7 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Esnek mesaide PDKS girişi eksikse amire soru yerine kanıt saatini (kapı / servis + yürüme payı) doğrudan yazmak | ⬜ Yapılacak |
 | Örnek veri: Kasım 2026, 19 departman, 76 çalışan, 23 senaryo (37 test) | ✅ |
 | Mavi / beyaz yaka, İSG uzmanı ve sistem yöneticisi rolleri, kullanıcı ve ayar yönetimi (35 test) | ✅ |
+| İSG: bölge yetkisi, eğitim / muayene geçerliliği, yalnızca uyarı (27 test) | ✅ |
 | CSV içe aktarma (Papa Parse): dosya okuma ve denetim var; veritabanına yükleme (`dosya_yukle`) bağlı değil | 🟡 Kısmen |
 | Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ✅ |
 | Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |

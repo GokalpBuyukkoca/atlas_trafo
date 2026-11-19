@@ -241,6 +241,28 @@ from dp
 where d.ad = dp.ad;
 update pdks.departman set vekil_amir_id = pg_temp.kid('montaj.amiri@example.com') where ad = 'Bobinaj';
 
+-- İSG: bölgeler, bölge kapıları ve giriş yetkileri (İSG uzmanı verir)
+insert into pdks.bolge (kod, ad) values ('YG-LAB', 'Yüksek Gerilim Test Laboratuvarı'), ('BOYAHANE', 'Boyahane');
+insert into pdks.okuyucu (kod, ad, sistem, konum, bolge_id) values
+    ('YG-KAPI',   'YG Test Lab kapısı', 'kapi', 'Kalite binası', (select id from pdks.bolge where kod = 'YG-LAB')),
+    ('BOYA-KAPI', 'Boyahane kapısı',    'kapi', 'Boyahane',      (select id from pdks.bolge where kod = 'BOYAHANE'));
+insert into pdks.bolge_yetkisi (bolge_id, departman_id, veren_id)
+select (select id from pdks.bolge where kod = v.b), d.id, pg_temp.kid('isg.uzmani@example.com')
+from (values ('YG-LAB', 'Kalite'), ('YG-LAB', 'Bakım'), ('BOYAHANE', 'Boya'), ('BOYAHANE', 'Bakım')) v(b, kisa)
+join dp on dp.kisa = v.kisa join pdks.departman d on d.ad = dp.ad;
+
+-- İSG eğitimi ve sağlık muayenesi: mavi yaka herkesin geçerli kaydı var (yalnızca tarih)
+insert into pdks.isg_belge (calisan_id, tur, gecerlilik_bitis, belge_no, giren_id)
+select x.id, t.tur,
+       case t.tur when 'isg_egitimi' then date '2027-01-15' else date '2027-02-01' end
+           + pg_temp.sayi(x.sicil_no || t.tur, 0, 300),
+       'ISG-' || x.sicil_no || '-' || t.kisa, pg_temp.kid('isg.uzmani@example.com')
+from pdks.calisan x
+join pdks.departman d on d.id = x.departman_id and d.yaka = 'mavi'
+cross join (values ('isg_egitimi', 'E'), ('saglik_muayenesi', 'M')) t(tur, kisa)
+where x.sicil_no in (select sicil from c)
+order by x.sicil_no, t.tur;
+
 -- İK kayıtlarını İK uzmanı girer; kendi kayıtlarını İK müdürü (görevler ayrılığı)
 create function pg_temp.giren(p_calisan bigint) returns bigint language sql stable as $$
     select case when p_calisan = pg_temp.cid('4001') then pg_temp.kid('ik.muduru@example.com')
