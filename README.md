@@ -124,6 +124,8 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261127010000_bolge_yetkisi_izi.sql` | Bölge yetkisinin verilme / kaldırılma izi |
 | `20261127020000_erp_aktarim.sql` | ERP aktarımı: kilitli ayın puantaj kodları (`v_puantaj_aktarim`) |
 | `20261128010000_dosya_yukle_duzeltmesi.sql` | `dosya_yukle`: dosyanın SHA-256 özeti, doğru satır sayısı, satır satır sunucu denetimi |
+| `20261129010000_esnek_kanit.sql` | Esnek mesaide PDKS girişi eksikse kanıt saati (kapı / servis + yürüme payı) doğrudan yazılır |
+| `20261129020000_zimmet_cakisma_mesaji.sql` | Geçici kart zimmeti çakışınca hata, çakışan zimmeti söyler (kart, kişi, tarih, saat) |
 
 ---
 
@@ -185,8 +187,9 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Saatlik izin (vizite dahil) | ✅ |
 | Tolerans 10 / 5 dk ve yuvarlama ayarı | ✅ |
 | FM50 / FM100, gece çalışması (m.69), puantaj kodları ve kalemleri (68 test) | ✅ |
-| Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00), esnek mesai, otomatik vardiya tanıma, mola (24 test) | ✅ |
-| Esnek mesaide PDKS girişi eksikse amire soru yerine kanıt saatini (kapı / servis + yürüme payı) doğrudan yazmak | ⬜ Yapılacak |
+| Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00), esnek mesai, otomatik vardiya tanıma, mola (28 test) | ✅ |
+| Esnek mesaide PDKS girişi eksikse amire soru yerine kanıt saatini (kapı / servis + yürüme payı) doğrudan yazmak | ✅ |
+| Geçici kart zimmeti çakışma hatasında çakışan zimmeti göstermek | ✅ |
 | Örnek veri: Kasım 2026, 19 departman, 76 çalışan, 23 senaryo (37 test) | ✅ |
 | Mavi / beyaz yaka, İSG uzmanı ve sistem yöneticisi rolleri, kullanıcı ve ayar yönetimi (35 test) | ✅ |
 | İSG: bölge yetkisi (verilme / kaldırılma izi dahil), eğitim / muayene geçerliliği, yalnızca uyarı (30 test) | ✅ |

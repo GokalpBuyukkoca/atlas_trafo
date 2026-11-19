@@ -47,7 +47,7 @@ if (error) toast.error(error.message)   // mesajlar Türkçe ve kullanıcıya g�
 
 | Fonksiyon | Parametreler | Ne yapar |
 |---|---|---|
-| `gecici_kart_ver` | `p_gecici_kart_id`, `p_calisan_id`, `p_aciklama?` | Kartını unutan çalışana geçici kart zimmetler; zimmet no döner |
+| `gecici_kart_ver` | `p_gecici_kart_id`, `p_calisan_id`, `p_aciklama?` | Kartını unutan çalışana geçici kart zimmetler; zimmet no döner. Kart ya da çalışan başka bir zimmetle çakışırsa hata çakışan zimmeti söyler: "GK-01 kartı Osman Doğan'a 24.11.2026 07:25'te verilmiş zimmetle çakışıyor (henüz iade edilmedi)." |
 | `gecici_kart_iade_al` | `p_zimmet_id` | Geçici kartı geri alır |
 
 İK de bu iki fonksiyonu çağırabilir.
