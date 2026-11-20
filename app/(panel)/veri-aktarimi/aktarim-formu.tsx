@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,15 @@ type Durum =
   | { tur: "hata"; mesaj: string }
   | { tur: "hazir"; dosyaAdi: string; sonuc: DenetimSonucu; ozet: string; onceki: { aktarim_zamani: string } | null };
 
+// Yükleme sonucu: yazılan okutma sayısı aktarım satırından, ay kilidi dönem tablosundan okunur
+type AktarimYaniti = { aktarim_id: number; eklenen: number; zaten_vardi: number; donem_kilitli: boolean };
+
+type Yukleme =
+  | { tur: "bekliyor" }
+  | { tur: "yukleniyor" }
+  | { tur: "hata"; mesaj: string }
+  | { tur: "tamam"; yanit: AktarimYaniti };
+
 // Dosya adı "pdks_20261126.csv" gibiyse türü adından tahmin eder
 function kaynakTahmini(dosyaAdi: string): Kaynak | null {
   const on = dosyaAdi.toLowerCase().split(/[_\-.\s]/)[0];
@@ -37,8 +47,11 @@ export function AktarimFormu({ okuyucular }: { okuyucular: Okuyucu[] }) {
   const [kaynak, setKaynak] = useState<Kaynak>("pdks");
   const [dosya, setDosya] = useState<File | null>(null);
   const [durum, setDurum] = useState<Durum>({ tur: "bos" });
+  const [yukleme, setYukleme] = useState<Yukleme>({ tur: "bekliyor" });
+  const router = useRouter();
 
   async function denetle(secilen: File, secilenKaynak: Kaynak) {
+    setYukleme({ tur: "bekliyor" });
     if (secilen.size > EN_BUYUK_DOSYA) {
       setDurum({ tur: "hata", mesaj: "Dosya 20 MB'tan büyük. Günlük dosyalar bundan küçük olmalı." });
       return;
@@ -64,9 +77,55 @@ export function AktarimFormu({ okuyucular }: { okuyucular: Okuyucu[] }) {
     }
   }
 
+  // Denetlenen satırları veritabanına yazar. Veritabanı denetimi baştan yapar ve
+  // her şeyi tek işlemde yazar: hata olursa hiçbir satır yazılmaz.
+  async function yukle(hazir: Extract<Durum, { tur: "hazir" }>) {
+    if (!hazir.sonuc.veriTarihi) return;
+    setYukleme({ tur: "yukleniyor" });
+    const supabase = tarayiciIstemcisi();
+    const { data: aktarimId, error } = await supabase.rpc("dosya_yukle", {
+      p_kaynak: kaynak,
+      p_dosya_adi: hazir.dosyaAdi,
+      p_veri_tarihi: hazir.sonuc.veriTarihi,
+      p_satirlar: hazir.sonuc.satirlar.map((s) => ({
+        okuyucu: s.okuyucuKod,
+        kart_no: s.kartNo,
+        zaman: s.zaman,
+        yon: s.yon,
+        satir_no: s.satirNo,
+      })),
+      p_dosya_ozeti: hazir.ozet,
+    });
+    if (error) {
+      setYukleme({ tur: "hata", mesaj: error.message });
+      return;
+    }
+
+    // Yükleme tamamlandı; aşağıdaki iki okuma yalnızca sonucu anlatmak için
+    const [yil, ay] = hazir.sonuc.veriTarihi.split("-").map(Number);
+    const [aktarim, donem] = await Promise.all([
+      supabase.from("aktarim").select("satir_sayisi").eq("id", aktarimId).maybeSingle(),
+      supabase.from("donem").select("durum").eq("yil", yil).eq("ay", ay).maybeSingle(),
+    ]);
+    const eklenen = aktarim.data?.satir_sayisi ?? hazir.sonuc.satirlar.length;
+    setYukleme({
+      tur: "tamam",
+      yanit: {
+        aktarim_id: aktarimId as number,
+        eklenen,
+        zaten_vardi: Math.max(hazir.sonuc.satirlar.length - eklenen, 0),
+        donem_kilitli: donem.data?.durum === "kilitli",
+      },
+    });
+    router.refresh(); // "Son aktarımlar" ve "Gelmeyen dosyalar" yenilensin
+  }
+
   function dosyaSecildi(secilen: File | null) {
     setDosya(secilen);
-    if (!secilen) return setDurum({ tur: "bos" });
+    if (!secilen) {
+      setYukleme({ tur: "bekliyor" });
+      return setDurum({ tur: "bos" });
+    }
     const tahmin = kaynakTahmini(secilen.name);
     const k = tahmin ?? kaynak;
     if (tahmin) setKaynak(tahmin);
@@ -108,14 +167,48 @@ export function AktarimFormu({ okuyucular }: { okuyucular: Okuyucu[] }) {
         </Alert>
       )}
 
-      {durum.tur === "hazir" && <Sonuc durum={durum} kaynak={kaynak} />}
+      {durum.tur === "hazir" && <Sonuc durum={durum} kaynak={kaynak} yukleme={yukleme} onYukle={() => void yukle(durum)} />}
     </div>
   );
 }
 
-function Sonuc({ durum, kaynak }: { durum: Extract<Durum, { tur: "hazir" }>; kaynak: Kaynak }) {
+function Sonuc({
+  durum,
+  kaynak,
+  yukleme,
+  onYukle,
+}: {
+  durum: Extract<Durum, { tur: "hazir" }>;
+  kaynak: Kaynak;
+  yukleme: Yukleme;
+  onYukle: () => void;
+}) {
   const { sonuc, onceki } = durum;
   const yuklenebilir = sonuc.hatalar.length === 0 && !onceki && sonuc.satirlar.length > 0;
+
+  if (yukleme.tur === "tamam") {
+    const { eklenen, zaten_vardi, donem_kilitli } = yukleme.yanit;
+    return (
+      <div className="flex flex-col gap-3" aria-live="polite">
+        <Alert>
+          <AlertTitle>Dosya aktarıldı</AlertTitle>
+          <AlertDescription>
+            {durum.dosyaAdi}: {eklenen.toLocaleString("tr-TR")} okutma kaydedildi
+            {zaten_vardi > 0 && `, daha önce başka dosyayla gelmiş ${zaten_vardi.toLocaleString("tr-TR")} okutma atlandı`}. Kayıtlar
+            gece işinde işlenecek.
+          </AlertDescription>
+        </Alert>
+        {donem_kilitli && (
+          <Alert variant="destructive">
+            <AlertTitle>Bu dosyanın ayı kilitli</AlertTitle>
+            <AlertDescription>
+              Ham kayıtlar alındı. Bu kayıtlardan çıkan düzeltmeler kilitli aya yazılmaz, sonraki aya fark satırı olarak geçer.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5" aria-live="polite">
@@ -207,14 +300,27 @@ function Sonuc({ durum, kaynak }: { durum: Extract<Durum, { tur: "hazir" }>; kay
         </section>
       )}
 
+      {yukleme.tur === "hata" && (
+        <Alert variant="destructive">
+          <AlertTitle>Dosya aktarılamadı</AlertTitle>
+          <AlertDescription>{yukleme.mesaj} Hiçbir satır kaydedilmedi.</AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
-        <Button disabled className="self-start">
-          {yuklenebilir ? `${sonuc.satirlar.length} satırı yükle` : "Yükle"}
+        <Button disabled={!yuklenebilir || yukleme.tur === "yukleniyor"} onClick={onYukle} className="self-start">
+          {yukleme.tur === "yukleniyor"
+            ? "Yükleniyor…"
+            : yuklenebilir
+              ? `${sonuc.satirlar.length.toLocaleString("tr-TR")} satırı yükle`
+              : "Yükle"}
         </Button>
         <p className="text-sm text-muted-foreground">
           {yuklenebilir
-            ? "Dosya yüklemeye hazır. Yükleme, veritabanındaki aktarım fonksiyonu (RPC) yazılınca açılacak."
-            : "Hatalar giderilince ve aktarım fonksiyonu (RPC) yazılınca yükleme açılacak."}
+            ? "Dosya yüklemeye hazır. Kayıtlar tek seferde yazılır; bir hata olursa hiçbiri yazılmaz. Yüklenen kayıt değiştirilemez ve silinemez."
+            : onceki
+              ? "Bu dosya daha önce aktarıldığı için yüklenemez."
+              : "Hatalar giderilmeden dosya yüklenemez."}
         </p>
       </div>
     </div>

@@ -43,6 +43,8 @@ export default async function AnaSayfa() {
       )}
       {kullanici.rol === "amir" && <AmirOzeti supabase={supabase} bugunTarih={bugunTarih} />}
       {kullanici.rol === "guvenlik" && <GuvenlikOzeti supabase={supabase} />}
+      {kullanici.rol === "isg" && <IsgOzeti supabase={supabase} />}
+      {kullanici.rol === "admin" && <AdminOzeti supabase={supabase} />}
     </div>
   );
 }
@@ -71,7 +73,12 @@ async function IkOzeti({ supabase, bugunTarih, saltOkur }: { supabase: Istemci; 
     say(supabase.from("fazla_mesai_plani").select("id", SAYIM).eq("durum", "talep"), "Fazla mesai talepleri"),
     say(supabase.from("gecici_kart_zimmet").select("id", SAYIM).is("iade_zamani", null), "Zimmetler"),
     say(
-      supabase.from("izin").select("id", SAYIM).lte("baslangic", bugunTarih).gte("bitis", bugunTarih),
+      supabase
+        .from("izin")
+        .select("id", SAYIM)
+        .is("iptal_zamani", null) // iptal edilen izin silinmez, yalnızca işaretlenir
+        .lte("baslangic", bugunTarih)
+        .gte("bitis", bugunTarih),
       "İzinler",
     ),
     supabase.from("vardiya_plani").select("tarih").eq("ik_onay_durumu", "bekliyor").order("tarih").limit(1).maybeSingle(),
@@ -293,6 +300,61 @@ async function GuvenlikOzeti({ supabase }: { supabase: Istemci }) {
           aciklama={`${IADE_SURESI_SAAT} saatten uzun süredir dışarıda`}
           href="/gecici-kartlar"
           ton={geciken ? "dikkat" : "notr"}
+        />
+      </OzetIzgarasi>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// İSG uzmanı: mavi yakanın belge durumu ve bölge uyarıları
+// ---------------------------------------------------------------------
+async function IsgOzeti({ supabase }: { supabase: Istemci }) {
+  const durumSay = (durum: string) =>
+    say(supabase.from("v_isg_durum").select("calisan_id", SAYIM).eq("yaka", "mavi").eq("durum", durum), "İSG belgeleri");
+  const [yok, dolmus, doluyor, uyari] = await Promise.all([
+    durumSay("yok"),
+    durumSay("dolmus"),
+    durumSay("doluyor"),
+    // İSG uzmanı uyari tablosunda yalnızca İSG ve bölge uyarılarını görür (RLS)
+    say(supabase.from("uyari").select("id", SAYIM).eq("goruldu", false), "Uyarılar"),
+  ]);
+
+  return (
+    <section aria-labelledby="isg-baslik" className="flex flex-col gap-3">
+      <h2 id="isg-baslik" className="text-lg font-semibold">İSG</h2>
+      <OzetIzgarasi>
+        <OzetKarti baslik="Belgesi olmayan" deger={yok} aciklama="Mavi yaka, belge türü başına" href="/isg" ton={yok ? "dikkat" : "iyi"} />
+        <OzetKarti baslik="Süresi dolmuş" deger={dolmus} href="/isg" ton={dolmus ? "dikkat" : "iyi"} />
+        <OzetKarti baslik="Süresi doluyor" deger={doluyor} aciklama="Uyarı süresi içinde" href="/isg" ton={doluyor ? "dikkat" : "notr"} />
+        <OzetKarti baslik="Görülmemiş uyarı" deger={uyari} aciklama="İSG ve yetkisiz bölge" href="/uyarilar" ton={uyari ? "dikkat" : "notr"} />
+      </OzetIzgarasi>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Sistem yöneticisi: kullanıcılar ve gece işinin durumu. Çalışan kayıtlarını görmez.
+// ---------------------------------------------------------------------
+async function AdminOzeti({ supabase }: { supabase: Istemci }) {
+  const [aktif, hesapsiz, sonGeceIsi] = await Promise.all([
+    say(supabase.from("kullanici").select("id", SAYIM).eq("aktif", true), "Kullanıcılar"),
+    say(supabase.from("kullanici").select("id", SAYIM).eq("aktif", true).is("auth_kullanici_id", null), "Kullanıcılar"),
+    supabase.from("gece_isi").select("islenen_gun, durum, hata_mesaji").order("id", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const gece = sonGeceIsi.data as { islenen_gun: string; durum: string; hata_mesaji: string | null } | null;
+
+  return (
+    <section aria-labelledby="admin-baslik" className="flex flex-col gap-3">
+      <h2 id="admin-baslik" className="text-lg font-semibold">Sistem</h2>
+      <OzetIzgarasi>
+        <OzetKarti baslik="Aktif kullanıcı" deger={aktif} href="/kullanicilar" />
+        <OzetKarti baslik="Giriş hesabı yok" deger={hesapsiz} aciklama="Supabase Auth'ta açılmalı" href="/kullanicilar" ton={hesapsiz ? "dikkat" : "iyi"} />
+        <OzetKarti
+          baslik="Son gece işi"
+          deger={gece ? (gece.durum === "basarili" ? "Başarılı" : gece.durum === "hatali" ? "Hatalı" : "Çalışıyor") : "—"}
+          aciklama={gece ? `${tarih(gece.islenen_gun)} günü${gece.hata_mesaji ? ` · ${gece.hata_mesaji}` : ""}` : "Hiç çalışmadı"}
+          ton={gece?.durum === "hatali" ? "dikkat" : gece ? "iyi" : "notr"}
         />
       </OzetIzgarasi>
     </section>

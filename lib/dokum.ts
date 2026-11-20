@@ -28,6 +28,11 @@ export type DokumGunu = {
   girisKaynagi: string | null;
   cikisKaynagi: string | null;
   durum: string | null;
+  gunKaydiId: number | null; // itiraz ve düzeltme bu kayda bağlanır
+  girisZamani: string | null; // ham değer (düzeltme penceresinin varsayılanı)
+  cikisZamani: string | null;
+  planliBaslangic: string | null;
+  planliBitis: string | null;
   calismaDk: number | null;
   gecKalmaDk: number | null;
   erkenCikisDk: number | null;
@@ -46,7 +51,11 @@ export type DokumDuzeltmesi = {
 };
 
 export type Dokum = {
-  calisan: { id: number; sicil: string; adSoyad: string; bolum: string; iseGiris: string; aktif: boolean; kart: string | null };
+  calisan: {
+    id: number; sicil: string; adSoyad: string; bolum: string; iseGiris: string; aktif: boolean; kart: string | null;
+    iseGirisTarihi: string; // "2026-12-01" (karşılaştırma için)
+    cikis: string | null; // "25.11.2026"
+  };
   ay: string;
   ayMetni: string;
   gunler: DokumGunu[];
@@ -100,12 +109,12 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
 
   const calisanSonucu = await supabase
     .from("calisan")
-    .select("id, sicil_no, ad, soyad, ise_giris_tarihi, aktif, departman:departman_id(ad)")
+    .select("id, sicil_no, ad, soyad, ise_giris_tarihi, isten_cikis_tarihi, aktif, departman:departman_id(ad)")
     .eq("id", calisanId)
     .maybeSingle();
   if (calisanSonucu.error) throw new Error(`Çalışan okunamadı: ${calisanSonucu.error.message}`);
   const c = calisanSonucu.data as unknown as {
-    id: number; sicil_no: string; ad: string; soyad: string; ise_giris_tarihi: string; aktif: boolean; departman: { ad: string } | null;
+    id: number; sicil_no: string; ad: string; soyad: string; ise_giris_tarihi: string; isten_cikis_tarihi: string | null; aktif: boolean; departman: { ad: string } | null;
   } | null;
   if (!c) return null;
 
@@ -114,7 +123,7 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
   type Fm = { is_gunu: string; planli_dk: number; durum: string };
   type Zimmet = { verilis_zamani: string; iade_zamani: string | null; kart: { kart_no: string } | null };
   type Gun = {
-    is_gunu: string; giris_zamani: string | null; cikis_zamani: string | null; giris_kaynagi: string | null; cikis_kaynagi: string | null;
+    id: number; is_gunu: string; planli_baslangic: string | null; planli_bitis: string | null; giris_zamani: string | null; cikis_zamani: string | null; giris_kaynagi: string | null; cikis_kaynagi: string | null;
     durum: string; calisma_dk: number | null; gec_kalma_dk: number | null; erken_cikis_dk: number | null; fazla_mesai_dk: number | null;
   };
   type Duz = {
@@ -129,16 +138,13 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
 
   const [planlar, izinler, fmler, zimmetler, gunKayitlari, duzeltmeler, tatilSonucu, kartSonucu] = await Promise.all([
     sayfali<Plan>("vardiya_plani", "tarih, ik_onay_durumu, aciklama, vardiya:vardiya_id(kod, ad)", "tarih"),
-    tumSatirlar<Izin>((bas, son) =>
-      supabase
-        .from(ikMi ? "izin" : "v_izin_amir")
-        .select("tur, baslangic, bitis")
-        .eq("calisan_id", calisanId)
-        .lte("baslangic", aySonu)
-        .gte("bitis", ayBasi)
-        .order("id")
-        .range(bas, son),
-    ),
+    // İptal edilen izinler silinmez: izin tablosunda süzülür, v_izin_amir onları zaten göstermez.
+    tumSatirlar<Izin>((bas, son) => {
+      const q = ikMi
+        ? supabase.from("izin").select("tur, baslangic, bitis").is("iptal_zamani", null)
+        : supabase.from("v_izin_amir").select("tur, baslangic, bitis");
+      return q.eq("calisan_id", calisanId).lte("baslangic", aySonu).gte("bitis", ayBasi).order("id").range(bas, son);
+    }),
     sayfali<Fm>("fazla_mesai_plani", "is_gunu, planli_dk, durum", "is_gunu"),
     // Geçici kart zimmetini amir göremez (RLS); yalnızca İK ve yönetici için okunur.
     tumunuGorur
@@ -155,7 +161,7 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
       : Promise.resolve([] as Zimmet[]),
     sayfali<Gun>(
       "gun_kaydi",
-      "is_gunu, giris_zamani, cikis_zamani, giris_kaynagi, cikis_kaynagi, durum, calisma_dk, gec_kalma_dk, erken_cikis_dk, fazla_mesai_dk",
+      "id, is_gunu, planli_baslangic, planli_bitis, giris_zamani, cikis_zamani, giris_kaynagi, cikis_kaynagi, durum, calisma_dk, gec_kalma_dk, erken_cikis_dk, fazla_mesai_dk",
       "is_gunu",
     ),
     sayfali<Duz>(
@@ -207,6 +213,11 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
       girisKaynagi: k?.giris_kaynagi ? KAYIT_KAYNAGI[k.giris_kaynagi] : null,
       cikisKaynagi: k?.cikis_kaynagi ? KAYIT_KAYNAGI[k.cikis_kaynagi] : null,
       durum: k ? durumEtiketi(k.durum, ikMi) : null,
+      gunKaydiId: k?.id ?? null,
+      girisZamani: k?.giris_zamani ?? null,
+      cikisZamani: k?.cikis_zamani ?? null,
+      planliBaslangic: k?.planli_baslangic ?? null,
+      planliBitis: k?.planli_bitis ?? null,
       calismaDk: k?.calisma_dk ?? null,
       gecKalmaDk: k?.gec_kalma_dk ?? null,
       erkenCikisDk: k?.erken_cikis_dk ?? null,
@@ -228,6 +239,8 @@ export async function aylikDokum(supabase: Istemci, calisanId: number, ay: strin
       adSoyad: `${c.ad} ${c.soyad}`,
       bolum: c.departman?.ad ?? "—",
       iseGiris: tarih(c.ise_giris_tarihi),
+      iseGirisTarihi: c.ise_giris_tarihi,
+      cikis: c.isten_cikis_tarihi ? tarih(c.isten_cikis_tarihi) : null,
       aktif: c.aktif,
       kart: (kartSonucu?.data as { kart_no: string } | null)?.kart_no ?? null,
     },

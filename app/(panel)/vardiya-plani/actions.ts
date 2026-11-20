@@ -1,0 +1,50 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import type { IslemSonucu } from "@/lib/islem-sonucu";
+import { bugun } from "@/lib/hafta";
+import { metinAl, rpcCagir, sayiAl, sicildenCalisan, tarihAl } from "@/lib/supabase/rpc";
+
+// Amir (ya da İK) bir günün vardiyasını girer ya da değiştirir. Veritabanı (vardiya_plani_gir) denetler:
+// çalışan amirin bölümünde mi, ay kilitli mi. Geçmiş güne giriş "geriye dönük" sayılır ve İK onayına düşer.
+export async function vardiyaPlaniGir(_onceki: IslemSonucu, form: FormData): Promise<IslemSonucu> {
+  const gun = tarihAl(form, "tarih");
+  const vardiyaId = sayiAl(form, "vardiya_id");
+  if (!gun) return { durum: "hata", mesaj: "Günü seçin." };
+  if (!vardiyaId) return { durum: "hata", mesaj: "Vardiyayı seçin." };
+
+  const bulunan = await sicildenCalisan(form);
+  if (!bulunan.tamam) return { durum: "hata", mesaj: bulunan.mesaj };
+
+  const sonuc = await rpcCagir<number>("vardiya_plani_gir", {
+    p_calisan_id: bulunan.calisan.id,
+    p_tarih: gun,
+    p_vardiya_id: vardiyaId,
+    p_aciklama: metinAl(form, "aciklama"),
+  });
+  if (!sonuc.tamam) return { durum: "hata", mesaj: sonuc.mesaj };
+
+  revalidatePath("/vardiya-plani");
+  revalidatePath("/");
+  const geriye = gun < bugun();
+  return {
+    durum: "tamam",
+    mesaj: geriye
+      ? `${bulunan.calisan.adSoyad} için geçmiş güne plan girildi; İK onayı bekliyor.`
+      : `${bulunan.calisan.adSoyad} için vardiya planı kaydedildi.`,
+  };
+}
+
+// İK, geçmiş güne girilmiş (geriye dönük) vardiya planını onaylar ya da reddeder.
+// Planı giren kişi onaylayamaz (görevler ayrılığı; veritabanı denetler).
+export async function vardiyaPlaniOnayla(_onceki: IslemSonucu, form: FormData): Promise<IslemSonucu> {
+  const planId = sayiAl(form, "plan_id");
+  const karar = metinAl(form, "karar");
+  if (!planId || (karar !== "onay" && karar !== "ret")) return { durum: "hata", mesaj: "Plan ya da karar seçilmedi." };
+
+  const sonuc = await rpcCagir("vardiya_plani_onayla", { p_plan_id: planId, p_onay: karar === "onay" });
+  if (!sonuc.tamam) return { durum: "hata", mesaj: sonuc.mesaj };
+  revalidatePath("/vardiya-plani");
+  revalidatePath("/");
+  return { durum: "tamam", mesaj: karar === "onay" ? "Geriye dönük plan onaylandı." : "Geriye dönük plan reddedildi." };
+}

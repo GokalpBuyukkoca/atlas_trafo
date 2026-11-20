@@ -63,3 +63,17 @@ export function sure(baslangic: string, bitis: string | null | undefined, simdi 
   if (sa > 0) return `${sa} sa ${kalanDk} dk`;
   return `${kalanDk} dk`;
 }
+
+// datetime-local alanı için Türkiye saatiyle "2026-11-26T08:01" (alanın varsayılan değeri)
+const yerelBicim = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: SAAT_DILIMI,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+export function yerelZamanGirdisi(deger: string | null | undefined): string {
+  if (!deger) return "";
+  return yerelBicim.format(new Date(deger)).replace(" ", "T");
+}

@@ -4,15 +4,22 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Secim } from "@/components/panel/secim";
+import { IslemPenceresi } from "@/components/panel/islem-penceresi";
 import { OzetIzgarasi, OzetKarti } from "@/components/panel/ozet-karti";
 import { VardiyaEtiketi } from "@/components/panel/vardiya-etiketi";
 import { tekDeger } from "@/lib/arama";
+import { yerelZamanGirdisi } from "@/lib/bicim";
 import { aylikDokum } from "@/lib/dokum";
 import { bugun } from "@/lib/hafta";
 import { rolGerekli } from "@/lib/oturum";
 import { ayAdi, ayKaydir, saatDakika } from "@/lib/puantaj";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { istenCikis, itirazGir, kartIptalEt, kartTanimla, kayitDuzelt } from "./actions";
+import { DuzeltmeAlanlari, type DuzeltmeItirazi } from "./duzeltme-alanlari";
 import { PdfIndir } from "./pdf-indir";
 
 export const metadata = { title: "Çalışan" };
@@ -34,6 +41,37 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
   const { calisan, gunler, duzeltmeler, ozet } = dokum;
   const bugunTarih = bugun();
   const adres = (a: string) => `/calisanlar/${calisanId}?ay=${a}`;
+  // İtirazı amir ve İK girer; yönetici yalnızca okur. Kimse kendi kaydına itiraz giremez
+  // (veritabanı da reddeder; düğme hiç gösterilmez).
+  const itirazGirebilir = (kullanici.rol === "amir" || kullanici.rol === "ik") && kullanici.calisanId !== calisanId;
+  // Kaydı yalnızca İK düzeltir; kendi kaydını düzeltemez (veritabanı da reddeder)
+  const duzeltebilir = kullanici.rol === "ik" && kullanici.calisanId !== calisanId;
+  const islemSutunu = itirazGirebilir || duzeltebilir;
+
+  // Kart işlemleri yalnızca İK (asıl kartın no'su ve id'si)
+  const aktifKart = duzeltebilir
+    ? ((await supabase.from("kart").select("id, kart_no").eq("calisan_id", calisanId).eq("durum", "aktif").maybeSingle()).data as
+        | { id: number; kart_no: string }
+        | null)
+    : null;
+
+  // Düzeltme bir itiraza bağlanabilsin diye bu ayın itirazları (gün kaydına göre)
+  const itirazByGun = new Map<number, DuzeltmeItirazi[]>();
+  if (duzeltebilir) {
+    const ids = dokum.gunler.map((g) => g.gunKaydiId).filter((x): x is number => x !== null);
+    if (ids.length) {
+      const { data } = await supabase
+        .from("itiraz")
+        .select("id, metin, durum, gun_kaydi_id")
+        .in("gun_kaydi_id", ids)
+        .order("id");
+      for (const i of (data ?? []) as (DuzeltmeItirazi & { gun_kaydi_id: number })[]) {
+        const liste = itirazByGun.get(i.gun_kaydi_id) ?? [];
+        liste.push({ id: i.id, metin: i.metin, durum: i.durum });
+        itirazByGun.set(i.gun_kaydi_id, liste);
+      }
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,10 +79,12 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
         <Link href="/calisanlar" className="self-start text-sm text-muted-foreground hover:text-foreground">← Çalışanlar</Link>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-semibold">{calisan.adSoyad}</h1>
-          {!calisan.aktif && <Badge variant="outline">Ayrıldı</Badge>}
+          {!calisan.aktif && <Badge variant="outline">Ayrıldı{calisan.cikis ? ` · ${calisan.cikis}` : ""}</Badge>}
+          {calisan.aktif && calisan.iseGirisTarihi > bugunTarih && <Badge>Başlayacak · {calisan.iseGiris}</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">
           Sicil <span className="font-mono">{calisan.sicil}</span> · {calisan.bolum} · İşe giriş {calisan.iseGiris}
+          {calisan.cikis && <> · Son çalışma günü {calisan.cikis}</>}
           {calisan.kart && <> · Kart <span className="font-mono">{calisan.kart}</span></>}
         </p>
       </div>
@@ -55,7 +95,60 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
           <span className="min-w-28 text-center font-semibold">{ayAdi(ay)}</span>
           <Link href={adres(ayKaydir(ay, 1))} className={buttonVariants({ variant: "outline", size: "sm" })}>→</Link>
         </nav>
-        {kullanici.rol === "ik" && <PdfIndir dokum={dokum} hazirlayan={kullanici.adSoyad} />}
+        <div className="flex flex-wrap gap-2">
+          {duzeltebilir && calisan.aktif && !aktifKart && (
+            <IslemPenceresi
+              dugme="Kart tanımla"
+              baslik={`${calisan.adSoyad} · yeni kart`}
+              aciklama="Kartın üzerindeki numarayı girin. Numara harf, rakam ve tireden oluşur; başka bir kartta kullanılamaz."
+              onay="Kartı tanımla"
+              islem={kartTanimla}
+              gizli={{ calisan_id: calisanId }}
+            >
+              <label htmlFor="kart_no" className="text-sm font-medium">Kart numarası</label>
+              <Input id="kart_no" name="kart_no" required maxLength={32} autoComplete="off" className="font-mono uppercase" placeholder="ör. K1031" />
+            </IslemPenceresi>
+          )}
+          {duzeltebilir && aktifKart && (
+            <IslemPenceresi
+              dugme="Kartı iptal et"
+              dugmeTuru="ghost"
+              baslik={`${aktifKart.kart_no} kartını iptal et`}
+              aciklama="İptal edilen kart artık geçerli sayılmaz; okutulursa İK'ya uyarı düşer. Yeni kart iptalden sonra tanımlanır."
+              onay="İptal et"
+              onayTuru="destructive"
+              islem={kartIptalEt}
+              gizli={{ kart_id: aktifKart.id }}
+            >
+              <label htmlFor="neden" className="text-sm font-medium">Neden</label>
+              <Secim id="neden" name="neden" required defaultValue="" className="h-9">
+                <option value="" disabled>Seçin</option>
+                <option value="kayip">Kayıp</option>
+                <option value="yenilendi">Yenilendi</option>
+                <option value="isten_cikis">İşten çıkış</option>
+                <option value="diger">Diğer</option>
+              </Secim>
+            </IslemPenceresi>
+          )}
+          {duzeltebilir && calisan.aktif && (
+            <IslemPenceresi
+              dugme="İşten çıkış"
+              dugmeTuru="ghost"
+              baslik={`${calisan.adSoyad} · işten çıkış`}
+              aciklama="Son çalışma günü girilir; ileri tarih olamaz. Kartı iptal edilir, sonraki planları silinir, sonraki izinleri ve bekleyen fazla mesai talepleri iptal edilir, kullanıcı hesabı varsa pasif olur. Son günler yarın sabah gece işinde yine işlenir. Geri alınamaz."
+              onay="Çıkışı kaydet"
+              onayTuru="destructive"
+              islem={istenCikis}
+              gizli={{ calisan_id: calisanId, ad_soyad: calisan.adSoyad }}
+            >
+              <label htmlFor="cikis_tarihi" className="text-sm font-medium">Son çalışma günü</label>
+              <Input id="cikis_tarihi" name="cikis_tarihi" type="date" required max={bugunTarih} defaultValue={bugunTarih} />
+              <label htmlFor="cikis_aciklama" className="text-sm font-medium">Açıklama (isteğe bağlı)</label>
+              <Textarea id="cikis_aciklama" name="aciklama" rows={2} maxLength={500} placeholder="ör. İstifa" />
+            </IslemPenceresi>
+          )}
+          {kullanici.rol === "ik" && <PdfIndir dokum={dokum} hazirlayan={kullanici.adSoyad} />}
+        </div>
       </div>
 
       <OzetIzgarasi>
@@ -83,6 +176,7 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
               <TableHead className="text-right">Çalışma</TableHead>
               <TableHead>Durum</TableHead>
               <TableHead>Not</TableHead>
+              {islemSutunu && <TableHead><span className="sr-only">İşlem</span></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -114,6 +208,43 @@ export default async function CalisanSayfasi({ params, searchParams }: PageProps
                   <TableCell className="text-right tabular-nums">{g.calismaDk != null ? saatDakika(g.calismaDk) : "—"}</TableCell>
                   <TableCell>{g.durum ?? "—"}</TableCell>
                   <TableCell className="max-w-80 whitespace-normal text-sm text-muted-foreground">{notlar.join(" · ") || ""}</TableCell>
+                  {islemSutunu && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                      {duzeltebilir && g.gunKaydiId && (
+                        <IslemPenceresi
+                          dugme="Düzelt"
+                          dugmeTuru="ghost"
+                          baslik={`${calisan.adSoyad} · ${g.tarihMetni} kaydını düzelt`}
+                          aciklama={`Şu an: giriş ${g.giris ?? "—"}, çıkış ${g.cikis ?? "—"}, ${g.durum ?? "—"}.`}
+                          onay="Düzeltmeyi kaydet"
+                          islem={kayitDuzelt}
+                          gizli={{ gun_kaydi_id: g.gunKaydiId }}
+                        >
+                          <DuzeltmeAlanlari
+                            girisVarsayilan={yerelZamanGirdisi(g.girisZamani ?? g.planliBaslangic)}
+                            cikisVarsayilan={yerelZamanGirdisi(g.cikisZamani ?? g.planliBitis)}
+                            itirazlar={itirazByGun.get(g.gunKaydiId) ?? []}
+                          />
+                        </IslemPenceresi>
+                      )}
+                      {itirazGirebilir && g.gunKaydiId && (
+                        <IslemPenceresi
+                          dugme="İtiraz"
+                          dugmeTuru="ghost"
+                          baslik={`${calisan.adSoyad} · ${g.tarihMetni} itirazı`}
+                          aciklama={`Kayıt: giriş ${g.giris ?? "—"}, çıkış ${g.cikis ?? "—"}, ${g.durum ?? "—"}. Çalışanın söylediğini yazın; kabul ya da red kararını İK verir.`}
+                          onay="İtirazı kaydet"
+                          islem={itirazGir}
+                          gizli={{ gun_kaydi_id: g.gunKaydiId }}
+                        >
+                          <label htmlFor="metin" className="text-sm font-medium">İtiraz</label>
+                          <Textarea id="metin" name="metin" rows={3} required minLength={5} maxLength={1000} placeholder="ör. 08:00'de geldim, kartım okumadı" />
+                        </IslemPenceresi>
+                      )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}

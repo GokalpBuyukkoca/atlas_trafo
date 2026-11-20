@@ -1,0 +1,21 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import type { IslemSonucu } from "@/lib/islem-sonucu";
+import { metinAl, rpcCagir } from "@/lib/supabase/rpc";
+
+// Ayı kilitler ve puantajı yazar (ay_kilitle). Kilit GERİ AÇILAMAZ; sonradan gelen düzeltme
+// sonraki aya fark satırı olur. Açık soru / itiraz ya da kararı bekleyen onaysız fazla mesai varsa
+// veritabanı reddeder; "zorla" işaretlenirse yine de kilitler.
+export async function ayKilitle(_onceki: IslemSonucu, form: FormData): Promise<IslemSonucu> {
+  const ay = metinAl(form, "ay");
+  if (!ay || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ay)) return { durum: "hata", mesaj: "Ay seçilmedi." };
+  if (metinAl(form, "onay") !== "evet") return { durum: "hata", mesaj: "Kilidin geri açılamayacağını onaylayın." };
+  const [yil, ayNo] = ay.split("-").map(Number);
+
+  const sonuc = await rpcCagir("ay_kilitle", { p_yil: yil, p_ay: ayNo, p_zorla: metinAl(form, "zorla") === "evet" });
+  if (!sonuc.tamam) return { durum: "hata", mesaj: sonuc.mesaj };
+
+  revalidatePath("/", "layout");
+  return { durum: "tamam", mesaj: "Ay kilitlendi, puantaj yazıldı. Excel ve ERP dosyaları artık kesin." };
+}

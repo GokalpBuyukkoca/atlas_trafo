@@ -6,13 +6,15 @@ import { supabaseAyarlari } from "@/lib/supabase/ayarlar";
 import { sunucuIstemcisi } from "@/lib/supabase/server";
 
 // Veritabanındaki roller (pdks.kullanici.rol)
-export type Rol = "amir" | "ik" | "guvenlik" | "yonetici";
+export type Rol = "amir" | "ik" | "guvenlik" | "yonetici" | "isg" | "admin";
 
 export const ROL_ADI: Record<Rol, string> = {
   amir: "Amir",
   ik: "İnsan Kaynakları",
   guvenlik: "Güvenlik",
   yonetici: "Yönetici",
+  isg: "İSG Uzmanı",
+  admin: "Sistem Yöneticisi",
 };
 
 export type OturumKullanicisi = {
@@ -20,6 +22,7 @@ export type OturumKullanicisi = {
   adSoyad: string;
   eposta: string;
   rol: Rol;
+  calisanId: number | null; // görevler ayrılığı: kullanıcının kendi çalışan kaydı
 };
 
 // Oturumdaki kullanıcıyı pdks.kullanici tablosundan okur.
@@ -42,7 +45,7 @@ export const oturumKullanicisi = cache(async (): Promise<OturumKullanicisi | nul
 
   const { data, error } = await supabase
     .from("kullanici")
-    .select("id, ad_soyad, eposta, rol")
+    .select("id, ad_soyad, eposta, rol, calisan_id")
     .eq("auth_kullanici_id", authId)
     .maybeSingle();
 
@@ -56,6 +59,7 @@ export const oturumKullanicisi = cache(async (): Promise<OturumKullanicisi | nul
     adSoyad: data.ad_soyad,
     eposta: data.eposta,
     rol: data.rol as Rol,
+    calisanId: data.calisan_id ?? null,
   };
 });
 

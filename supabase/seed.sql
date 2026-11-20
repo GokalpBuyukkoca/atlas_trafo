@@ -63,8 +63,32 @@ insert into pdks.okuyucu (kod, ad, sistem, konum) values
 -- ---------------------------------------------------------------------
 -- 2. Departmanlar, çalışanlar, kartlar
 -- ---------------------------------------------------------------------
-insert into pdks.departman (ad) values ('Montaj'), ('Bobinaj'), ('Kalite'), ('İdari');
+-- Kısa ad (bu dosyada kullanılır) → departman adı ve yaka
+create temp table dp (kisa text primary key, ad text, yaka text) on commit drop;
+insert into dp values
+    ('Montaj',     'Aktif Kısım ve Montaj',                   'mavi'),
+    ('Bobinaj',    'Bobinaj',                                 'mavi'),
+    ('Kalite',     'Kalite Kontrol ve YG Test Laboratuvarı',  'mavi'),
+    ('İdari',      'İdari İşler',                             'mavi'),
+    ('Nüve',       'Nüve Dizme',                              'mavi'),
+    ('Kazan',      'Kazan İmalat ve Kaynak',                  'mavi'),
+    ('Boya',       'Boyahane ve Yüzey İşlem',                 'mavi'),
+    ('Bakım',      'Bakım ve Onarım',                         'mavi'),
+    ('Depo',       'Depo ve Sevkiyat',                        'mavi'),
+    ('ArGe',       'Ar-Ge ve Tasarım',                        'beyaz'),
+    ('Planlama',   'Üretim Planlama',                         'beyaz'),
+    ('Satış',      'Satış ve Pazarlama',                      'beyaz'),
+    ('DışTicaret', 'Dış Ticaret ve Lojistik',                 'beyaz'),
+    ('SatınAlma',  'Satın Alma',                              'beyaz'),
+    ('İK',         'İnsan Kaynakları',                        'beyaz'),
+    ('İSG',        'İSG',                                     'beyaz'),
+    ('Finans',     'Finans ve Muhasebe',                      'beyaz'),
+    ('Bİ',         'Bilgi İşlem',                             'beyaz'),
+    ('ÜstYönetim', 'Üst Yönetim',                             'beyaz');
+insert into pdks.departman (ad, yaka) select ad, yaka from dp order by ad;
 
+-- grup: G = Gündüz 08-17 · A/B/C = Bobinaj V1/V2/V3 dönüşümlü · G8 = Gündüz 08-16 ·
+--       R1/R2 = 08-16 / 16-24 / 00-08 haftalık dönüşümlü · BY = beyaz yaka 08:30-18:00 · E = esnek
 create temp table c (sicil text, ad text, soyad text, dep text, grup text, servis text) on commit drop;
 insert into c values
     -- Montaj (gündüz)
@@ -101,11 +125,59 @@ insert into c values
     ('4003', 'Recep',   'Bayram',   'İdari',   'G', null),
     ('4004', 'Nur',     'Tekin',    'İdari',   'G', null),
     ('4005', 'Derya',   'Özkan',    'İdari',   'G', 'SRV-2'),
-    ('4006', 'Levent',  'Sarı',     'İdari',   'G', null);
+    ('4006', 'Levent',  'Sarı',     'İdari',   'G', null),
+    -- Nüve Dizme ve Kazan İmalat (amir 08-16; işçiler 08-16 / 16-24 / 00-08 dönüşümlü)
+    ('5001', 'Barış',   'Yalçın',   'Nüve',       'G8', null),
+    ('5002', 'Ferhat',  'Kara',     'Nüve',       'R1', null),
+    ('5003', 'Gökhan',  'Tuna',     'Nüve',       'R2', null),
+    ('5101', 'Sinan',   'Güler',    'Kazan',      'G8', null),
+    ('5102', 'Erkan',   'Duman',    'Kazan',      'R1', null),
+    ('5103', 'Yasin',   'Avcı',     'Kazan',      'R2', null),
+    -- Boyahane, Bakım, Depo (08-16)
+    ('5201', 'Cengiz',  'Sezer',    'Boya',       'G8', null),
+    ('5202', 'Hakan',   'Ekinci',   'Boya',       'G8', null),
+    ('5203', 'Orhan',   'Bozkurt',  'Boya',       'G8', null),
+    ('5301', 'Volkan',  'Şimşek',   'Bakım',      'G8', null),
+    ('5302', 'Taner',   'Yazıcı',   'Bakım',      'G8', null),
+    ('5303', 'Uğur',    'Keskin',   'Bakım',      'G8', null),
+    ('5401', 'Ramazan', 'Çetin',    'Depo',       'G8', null),
+    ('5402', 'Selim',   'Ünal',     'Depo',       'G8', null),
+    ('5403', 'Halil',   'Turan',    'Depo',       'G8', null),
+    -- Beyaz yaka (08:30-18:00); Ar-Ge ve Satış çalışanları esnek mesai
+    ('6001', 'Aylin',   'Kaplan',   'ArGe',       'BY', null),
+    ('6002', 'Onur',    'Baysal',   'ArGe',       'E',  null),
+    ('6003', 'Pınar',   'Demirtaş', 'ArGe',       'E',  null),
+    ('6101', 'Cansu',   'Akın',     'Planlama',   'BY', null),
+    ('6102', 'Tuncay',  'Erdem',    'Planlama',   'BY', null),
+    ('6103', 'Damla',   'Özer',     'Planlama',   'BY', null),
+    ('6201', 'Serdar',  'Coşkun',   'Satış',      'BY', null),
+    ('6202', 'İrem',    'Toprak',   'Satış',      'E',  null),
+    ('6203', 'Kerem',   'Aydoğan',  'Satış',      'E',  null),
+    ('6301', 'Gamze',   'Yüksel',   'DışTicaret', 'BY', null),
+    ('6302', 'Batuhan', 'Işık',     'DışTicaret', 'BY', null),
+    ('6303', 'Seda',    'Karaca',   'DışTicaret', 'BY', null),
+    ('6401', 'Nihat',   'Uysal',    'SatınAlma',  'BY', null),
+    ('6402', 'Esra',    'Bilgin',   'SatınAlma',  'BY', null),
+    ('6403', 'Arda',    'Sönmez',   'SatınAlma',  'BY', null),
+    ('6501', 'Filiz',   'Oral',     'İK',         'BY', null),
+    ('6502', 'Ozan',    'Kurtuluş', 'İK',         'BY', null),
+    ('6503', 'Burcu',   'Çakır',    'İK',         'BY', null),
+    ('6601', 'Mert',    'Alkan',    'İSG',        'BY', null),
+    ('6602', 'Tuba',    'Erkoç',    'İSG',        'BY', null),
+    ('6603', 'Kadir',   'Eren',     'İSG',        'BY', null),
+    ('6701', 'Hülya',   'Gündoğdu', 'Finans',     'BY', null),
+    ('6702', 'Emrah',   'Sevim',    'Finans',     'BY', null),
+    ('6703', 'Melis',   'Aras',     'Finans',     'BY', null),
+    ('6801', 'Tamer',   'Oğuz',     'Bİ',         'BY', null),
+    ('6802', 'Alper',   'Çınar',    'Bİ',         'BY', null),
+    ('6803', 'Ezgi',    'Polater',  'Bİ',         'BY', null),
+    ('6901', 'Rıza',    'Kalkan',   'ÜstYönetim', 'BY', null),
+    ('6902', 'Şule',    'Erten',    'ÜstYönetim', 'BY', null),
+    ('6903', 'Yavuz',   'Soylu',    'ÜstYönetim', 'BY', null);
 
 insert into pdks.calisan (sicil_no, ad, soyad, departman_id, ise_giris_tarihi)
 select c.sicil, c.ad, c.soyad, d.id, date '2024-01-02' + pg_temp.sayi(c.sicil, 0, 600)
-from c join pdks.departman d on d.ad = c.dep
+from c join dp on dp.kisa = c.dep join pdks.departman d on d.ad = dp.ad
 order by c.sicil;
 
 insert into pdks.kart (kart_no, calisan_id, verilis_tarihi)
@@ -134,13 +206,62 @@ from (values ('Hasan Yılmaz',  'montaj.amiri@example.com',  '1001'),
 create function pg_temp.kid(p text) returns bigint language sql stable as $$
     select id from pdks.kullanici where eposta = p $$;
 
-update pdks.departman d set amir_id = pg_temp.kid(v.e)
-from (values ('Montaj',  'montaj.amiri@example.com'),
-             ('Bobinaj', 'bobinaj.amiri@example.com'),
-             ('Kalite',  'kalite.amiri@example.com'),
-             ('İdari',   'uretim.muduru@example.com')) v(d, e)
-where d.ad = v.d;
+-- Yeni departmanların amirleri: mavi yakada üst amir üretim müdürü, beyaz yakada genel müdür
+insert into pdks.kullanici (ad_soyad, eposta, rol, calisan_id)
+values ('Rıza Kalkan', 'genel.mudur@example.com', 'amir', pg_temp.cid('6901'));
+insert into pdks.kullanici (ad_soyad, eposta, rol, calisan_id, ust_amir_id)
+select c.ad || ' ' || c.soyad, v.e, 'amir', pg_temp.cid(v.s),
+       (select id from pdks.kullanici
+        where eposta = case when dp.yaka = 'mavi' then 'uretim.muduru@example.com' else 'genel.mudur@example.com' end)
+from (values ('5001', 'nuve.amiri@example.com'),        ('5101', 'kazan.amiri@example.com'),
+             ('5201', 'boyahane.amiri@example.com'),    ('5301', 'bakim.amiri@example.com'),
+             ('5401', 'depo.amiri@example.com'),        ('6001', 'arge.amiri@example.com'),
+             ('6101', 'planlama.amiri@example.com'),    ('6201', 'satis.amiri@example.com'),
+             ('6301', 'dis.ticaret.amiri@example.com'), ('6401', 'satin.alma.amiri@example.com'),
+             ('6501', 'insan.kaynaklari.amiri@example.com'), ('6601', 'isg.amiri@example.com'),
+             ('6701', 'finans.amiri@example.com'),      ('6801', 'bilgi.islem.amiri@example.com')) v(s, e)
+join c on c.sicil = v.s join dp on dp.kisa = c.dep;
+
+-- İSG uzmanı ve sistem yöneticisi
+insert into pdks.kullanici (ad_soyad, eposta, rol, calisan_id) values
+    ('Tuba Erkoç',  'isg.uzmani@example.com',        'isg',   pg_temp.cid('6602')),
+    ('Alper Çınar', 'sistem.yoneticisi@example.com', 'admin', pg_temp.cid('6802'));
+
+-- Her departmanın amiri: grubun ilk sicili (İdari İşler: üretim müdürü)
+update pdks.departman d
+set amir_id = case when dp.kisa = 'Montaj'  then pg_temp.kid('montaj.amiri@example.com')
+                   when dp.kisa = 'Bobinaj' then pg_temp.kid('bobinaj.amiri@example.com')
+                   when dp.kisa = 'Kalite'  then pg_temp.kid('kalite.amiri@example.com')
+                   when dp.kisa = 'İdari'   then pg_temp.kid('uretim.muduru@example.com')
+                   else (select k.id from pdks.kullanici k
+                         join pdks.calisan x on x.id = k.calisan_id
+                         where x.departman_id = d.id and k.rol = 'amir'
+                         order by x.sicil_no limit 1) end
+from dp
+where d.ad = dp.ad;
 update pdks.departman set vekil_amir_id = pg_temp.kid('montaj.amiri@example.com') where ad = 'Bobinaj';
+
+-- İSG: bölgeler, bölge kapıları ve giriş yetkileri (İSG uzmanı verir)
+insert into pdks.bolge (kod, ad) values ('YG-LAB', 'Yüksek Gerilim Test Laboratuvarı'), ('BOYAHANE', 'Boyahane');
+insert into pdks.okuyucu (kod, ad, sistem, konum, bolge_id) values
+    ('YG-KAPI',   'YG Test Lab kapısı', 'kapi', 'Kalite binası', (select id from pdks.bolge where kod = 'YG-LAB')),
+    ('BOYA-KAPI', 'Boyahane kapısı',    'kapi', 'Boyahane',      (select id from pdks.bolge where kod = 'BOYAHANE'));
+insert into pdks.bolge_yetkisi (bolge_id, departman_id, veren_id)
+select (select id from pdks.bolge where kod = v.b), d.id, pg_temp.kid('isg.uzmani@example.com')
+from (values ('YG-LAB', 'Kalite'), ('YG-LAB', 'Bakım'), ('BOYAHANE', 'Boya'), ('BOYAHANE', 'Bakım')) v(b, kisa)
+join dp on dp.kisa = v.kisa join pdks.departman d on d.ad = dp.ad;
+
+-- İSG eğitimi ve sağlık muayenesi: mavi yaka herkesin geçerli kaydı var (yalnızca tarih)
+insert into pdks.isg_belge (calisan_id, tur, gecerlilik_bitis, belge_no, giren_id)
+select x.id, t.tur,
+       case t.tur when 'isg_egitimi' then date '2027-01-15' else date '2027-02-01' end
+           + pg_temp.sayi(x.sicil_no || t.tur, 0, 300),
+       'ISG-' || x.sicil_no || '-' || t.kisa, pg_temp.kid('isg.uzmani@example.com')
+from pdks.calisan x
+join pdks.departman d on d.id = x.departman_id and d.yaka = 'mavi'
+cross join (values ('isg_egitimi', 'E'), ('saglik_muayenesi', 'M')) t(tur, kisa)
+where x.sicil_no in (select sicil from c)
+order by x.sicil_no, t.tur;
 
 -- İK kayıtlarını İK uzmanı girer; kendi kayıtlarını İK müdürü (görevler ayrılığı)
 create function pg_temp.giren(p_calisan bigint) returns bigint language sql stable as $$
@@ -154,7 +275,13 @@ create function pg_temp.giren(p_calisan bigint) returns bigint language sql stab
 create temp table p (sicil text, tarih date, vardiya text) on commit drop;
 insert into p
 select c.sicil, g::date,
-       case when c.grup = 'G' then 'GUNDUZ'
+       case when c.grup = 'G'  then 'GUNDUZ'
+            when c.grup = 'G8' then 'GUNDUZ_8'
+            when c.grup = 'BY' then 'BEYAZ'
+            when c.grup = 'E'  then 'ESNEK'
+            when c.grup in ('R1', 'R2') then
+                 (array['GUNDUZ_8', 'AKSAM_8', 'GECE_8'])[1 + ((array_position(array['R1', 'R2'], c.grup) - 1
+                                              + (extract(week from g)::int - extract(week from date '2026-11-02')::int)) % 3)]
             else (array['V1', 'V2', 'V3'])[1 + ((array_position(array['A', 'B', 'C'], c.grup) - 1
                                               + (extract(week from g)::int - extract(week from date '2026-11-02')::int)) % 3)]
        end
@@ -208,12 +335,23 @@ with v as (
            (p.tarih + t.baslangic) at time zone 'Europe/Istanbul' as bas,
            ((p.tarih + case when t.bitis <= t.baslangic then 1 else 0 end) + t.bitis) at time zone 'Europe/Istanbul' as bit
     from p join c using (sicil) join pdks.vardiya_tanim t on t.kod = p.vardiya
-), z as (
+), z0 as (
+    -- Esnek mesai: giriş 08:00–09:30 arası, günde ortalama 9 saat (net 8 saat) kalır
     select v.*,
-           case when dep = 'Bobinaj' then 'PDKS-2' else 'PDKS-1' end as pdks_okuyucu,
-           bas - make_interval(mins => pg_temp.sayi(sicil || tarih || 'g', 5, 20), secs => pg_temp.sayi(sicil || tarih || 'gs', 0, 59)) as pdks_giris,
-           bit + make_interval(mins => pg_temp.sayi(sicil || tarih || 'c', 1, 12), secs => pg_temp.sayi(sicil || tarih || 'cs', 0, 59)) as pdks_cikis
+           case when vardiya = 'ESNEK'
+                then (tarih + time '08:00') at time zone 'Europe/Istanbul'
+                     + make_interval(mins => pg_temp.sayi(sicil || tarih || 'g', 0, 90), secs => pg_temp.sayi(sicil || tarih || 'gs', 0, 59))
+                else bas - make_interval(mins => pg_temp.sayi(sicil || tarih || 'g', 5, 20), secs => pg_temp.sayi(sicil || tarih || 'gs', 0, 59))
+           end as pdks_giris
     from v
+), z as (
+    select z0.*,
+           case when dep = 'Bobinaj' then 'PDKS-2' else 'PDKS-1' end as pdks_okuyucu,
+           case when vardiya = 'ESNEK'
+                then pdks_giris + make_interval(mins => 540 + pg_temp.sayi(sicil || tarih || 'c', -30, 30))
+                else bit + make_interval(mins => pg_temp.sayi(sicil || tarih || 'c', 1, 12), secs => pg_temp.sayi(sicil || tarih || 'cs', 0, 59))
+           end as pdks_cikis
+    from z0
 )
 insert into o
 select sicil, tarih, 'pdks', pdks_okuyucu, null, pdks_giris, 'giris' from z
@@ -225,10 +363,12 @@ union all
 select sicil, tarih, 'kapi', 'KAPI-1', null, pdks_cikis + make_interval(mins => pg_temp.sayi(sicil || tarih || 'kc', 2, 5)), 'cikis' from z
 union all
 select sicil, tarih, 'yemekhane', 'YMK-1', null,
-       case vardiya when 'GUNDUZ' then (tarih + time '12:00') at time zone 'Europe/Istanbul'
-                    when 'V1'     then (tarih + time '10:30') at time zone 'Europe/Istanbul'
-                    when 'V2'     then (tarih + time '18:30') at time zone 'Europe/Istanbul'
-                    else               (tarih + 1 + time '02:00') at time zone 'Europe/Istanbul' end
+       case when vardiya in ('GUNDUZ', 'GUNDUZ_8', 'BEYAZ', 'ESNEK') then (tarih + time '12:00') at time zone 'Europe/Istanbul'
+            when vardiya = 'V1'      then (tarih + time '10:30') at time zone 'Europe/Istanbul'
+            when vardiya = 'V2'      then (tarih + time '18:30') at time zone 'Europe/Istanbul'
+            when vardiya = 'AKSAM_8' then (tarih + time '19:30') at time zone 'Europe/Istanbul'
+            when vardiya = 'GECE_8'  then (tarih + time '03:00') at time zone 'Europe/Istanbul'
+            else                          (tarih + 1 + time '02:00') at time zone 'Europe/Istanbul' end
        + make_interval(mins => pg_temp.sayi(sicil || tarih || 'y', 0, 40)), null from z
 union all
 select sicil, tarih, 'servis', servis, null, pdks_giris - make_interval(mins => pg_temp.sayi(sicil || tarih || 'sg', 18, 30)), 'giris'

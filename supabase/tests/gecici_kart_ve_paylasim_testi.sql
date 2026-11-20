@@ -29,6 +29,14 @@ create function test.k(p text) returns bigint language sql as $$ select id from 
 create function test.c(p text) returns bigint language sql as $$ select id from pdks.calisan where sicil_no = p $$;
 create function test.g(p text) returns bigint language sql as $$ select id from pdks.gecici_kart where kart_no = p $$;
 create function test.uyari_sayisi(p_tur text) returns bigint language sql as $$ select count(*) from pdks.uyari where tur = p_tur $$;
+-- Komutun verdiği hata mesajı (hata vermezse null)
+create function test.hata_mesaji(p_sql text) returns text language plpgsql as $$
+begin
+    execute p_sql;
+    return null;
+exception when others then
+    return sqlerrm;
+end $$;
 
 set timezone = 'Europe/Istanbul';
 
@@ -70,6 +78,10 @@ select test.dogrula('güvenlik geçici kartı verdi', exists (select 1 from pdks
 select test.hata_bekle('iade edilmemiş kart başkasına verilemez',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('TGK-01'), test.c('T1002'), '2026-09-10 09:00+03', test.k('guvenlik@ornek.test'))$$);
+select test.dogrula('çakışma mesajı açık zimmeti söyler: kart, kişi, tarih, saat, iade durumu (20261129020000)',
+    test.hata_mesaji($$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
+      values (test.g('TGK-01'), test.c('T1002'), '2026-09-10 09:00+03', test.k('guvenlik@ornek.test'))$$)
+    = 'TGK-01 kartı AdT1001 SoyadT1001''a 10.09.2026 07:50''de verilmiş zimmetle çakışıyor (henüz iade edilmedi).');
 select test.hata_bekle('bir çalışanda aynı anda iki geçici kart olamaz',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('TGK-02'), test.c('T1001'), '2026-09-10 09:00+03', test.k('guvenlik@ornek.test'))$$);
@@ -90,6 +102,21 @@ select test.hata_bekle('iade edilmiş zimmet değiştirilemez',
 select test.hata_bekle('geriye dönük çakışan zimmet girilemez',
     $$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
       values (test.g('TGK-01'), test.c('T1002'), '2026-09-10 12:00+03', test.k('guvenlik@ornek.test'))$$);
+select test.dogrula('iade edilmiş zimmetle çakışmada mesaj iade saatini de söyler',
+    test.hata_mesaji($$insert into pdks.gecici_kart_zimmet (gecici_kart_id, calisan_id, verilis_zamani, veren_id)
+      values (test.g('TGK-01'), test.c('T1002'), '2026-09-10 12:00+03', test.k('guvenlik@ornek.test'))$$)
+    like '%TGK-01 kartı AdT1001 SoyadT1001''a 10.09.2026 07:50''de verilmiş zimmetle çakışıyor (iade: 10.09.2026 17:10).');
+select test.dogrula('isim eki: son ünlüye göre a / e, ünlüyle bitince y',
+    pdks.yonelme_eki('Osman Doğan') = 'Osman Doğan''a' and pdks.yonelme_eki('Elif Şen') = 'Elif Şen''e'
+    and pdks.yonelme_eki('Mehmet Kaya') = 'Mehmet Kaya''ya' and pdks.yonelme_eki('Levent Sarı') = 'Levent Sarı''ya'
+    and pdks.yonelme_eki('Serkan Öztürk') = 'Serkan Öztürk''e' and pdks.yonelme_eki('Ezgi Polater') = 'Ezgi Polater''e'
+    and pdks.yonelme_eki('Ahmet Er') = 'Ahmet Er''e' and pdks.yonelme_eki('Hülya Gündoğdu') = 'Hülya Gündoğdu''ya');
+select test.dogrula('saat eki: okunuşun son sayısına göre (yirmi beş''te, yedi''de, otuz''da, kırk''ta, elli''de, altı''da)',
+    pdks.saat_eki('2026-11-24 07:25+03') = '07:25''te' and pdks.saat_eki('2026-11-24 07:00+03') = '07:00''de'
+    and pdks.saat_eki('2026-11-24 17:30+03') = '17:30''da' and pdks.saat_eki('2026-11-24 08:40+03') = '08:40''ta'
+    and pdks.saat_eki('2026-11-24 13:50+03') = '13:50''de' and pdks.saat_eki('2026-11-24 09:06+03') = '09:06''da'
+    and pdks.saat_eki('2026-11-24 00:00+03') = '00:00''da' and pdks.saat_eki('2026-11-24 10:00+03') = '10:00''da'
+    and pdks.saat_eki('2026-11-24 11:03+03') = '11:03''te');
 
 select test.hata_bekle('zimmet tablo sahibi için bile silinemez',
     $$delete from pdks.gecici_kart_zimmet$$);

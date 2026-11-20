@@ -19,7 +19,7 @@ Bu sistem mevcut PDKS'yi **değiştirmez**, kayıtlarını alıp yanında çalı
 4. **Kanıt yoksa** ertesi sabah amire sorar. Cevapsız soru 3 gün sonra üst amire ve İK'ya gider.
 5. Her düzeltme kim / ne zaman / eski-yeni değer / gerekçe / dayanak ile **silinemeyen** bir tabloya yazılır.
 6. Fazla mesaide yazılı onay, günlük 11 saat ve yıllık 270 saat sınırlarını denetler.
-7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika) Excel olarak alınır.
+7. Ay sonunda İK ayı kilitler; bordroya hazır puantaj (gün ve dakika, NÇ / FM50 / FM100 / izin kodları) Excel olarak, ERP'ye aktarılacak icmal CSV ve XML olarak alınır.
 
 ### Temel kararlar
 - **Çalışan aleyhine her karar İK'dadır** (KVKK m.11): devamsızlık, itirazın reddi, kart paylaşımı, plansız fazla mesai. Sistem en fazla "şüphe" ya da "uyarı" üretir.
@@ -36,9 +36,9 @@ Sorun–tablo eşlemesi (17 sorun): [docs/veritabani.md](docs/veritabani.md).
 
 | Katman | Teknoloji | Not |
 |---|---|---|
-| Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 28 tablo |
+| Veritabanı | **Supabase (PostgreSQL)** | `pdks` şeması, 35 tablo |
 | İş kuralları | PostgreSQL fonksiyonları ve trigger'lar | Gece işi, düzeltme, görevler ayrılığı, ay kilidi veritabanının içinde çalışır; ekran atlansa bile kural delinemez |
-| Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
+| Giriş ve yetki | **Supabase Auth + RLS** | Roller: `amir`, `ik`, `guvenlik`, `yonetici`, `isg`, `admin`. Her kullanıcı yalnızca rolünün izin verdiği satırları görür |
 | Frontend | **Next.js + TypeScript** | Tailwind CSS + shadcn/ui |
 | Veri bağlantısı | supabase-js | Veritabanı fonksiyonları RPC ile çağrılır |
 | CSV okuma | Papa Parse | PDKS, kapı, yemekhane, servis dosyaları |
@@ -61,11 +61,13 @@ atlas_trafo/
 ├─ .env.example              # ortam değişkenleri şablonu (değersiz)
 ├─ docs/
 │  ├─ veritabani.md          # veritabanı dokümanı ve ER diyagramı
-│  └─ ornek_veri.md          # örnek verideki kişiler, demo hesapları ve senaryolar
+│  ├─ ornek_veri.md          # örnek verideki kişiler, demo hesapları ve senaryolar
+│  └─ ekran_fonksiyonlari.md # ekranların çağırdığı RPC fonksiyonları (parametreler, örnekler)
 ├─ supabase/
 │  ├─ config.toml            # Supabase CLI ayarları
 │  ├─ migrations/            # sıra numaralı veritabanı değişiklikleri (mevcutlar asla değiştirilmez)
 │  ├─ seed.sql               # örnek (sahte) veri: Kasım 2026
+│  ├─ scripts/               # canlı için salt-okunur kontrol sorguları (SQL Editor'da çalıştırılır)
 │  └─ tests/                 # SQL kural testleri
 └─ .github/workflows/        # PR yetki koruması
 ```
@@ -83,16 +85,17 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 
 ## 4. Veritabanı
 
-`pdks` şemasında **28 tablo** (temel 24 + fazla mesai 2 + geçici kart 2). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
+`pdks` şemasında **35 tablo** (temel 24 + fazla mesai 2 + geçici kart 2 + puantaj kuralları 3 + İSG 4). Ayrıntı ve ER diyagramı: [docs/veritabani.md](docs/veritabani.md).
 
 | Grup | Tablolar |
 |---|---|
-| Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici), departman, calisan, kart, gecici_kart, gecici_kart_zimmet |
-| Vardiya, izin, ayar | vardiya_tanim, vardiya_plani, izin, resmi_tatil, ayar, ayar_gecmisi |
+| Kişiler ve organizasyon | kullanici (amir, İK, güvenlik, yönetici, İSG, admin), departman (mavi / beyaz yaka), calisan, kart, gecici_kart, gecici_kart_zimmet |
+| Vardiya, izin, ayar | vardiya_tanim, vardiya_plani, izin, saatlik_izin, resmi_tatil, ayar, ayar_gecmisi |
 | Ham veri (değiştirilemez) | aktarim, okuyucu, ham_okutma, kanit_kaydi, okutma_isareti |
+| İSG | bolge, bolge_yetkisi, bolge_yetkisi_gecmisi, isg_belge (yalnızca geçerlilik tarihi) |
 | İşleme | gece_isi, ariza, uyari |
-| Gün, karar, düzeltme, dönem | gun_kaydi, amir_sorusu, itiraz, duzeltme, donem, puantaj_satiri |
-| Fazla mesai | fazla_mesai_onayi, fazla_mesai_plani |
+| Gün, karar, düzeltme, dönem | gun_kaydi, amir_sorusu, itiraz, duzeltme, donem, puantaj_satiri, puantaj_kalemi |
+| Fazla mesai | fazla_mesai_onayi, fazla_mesai_plani, fazla_mesai_inceleme (onaysız fazla mesai havuzu) |
 
 **Veritabanının zorladığı kurallar:** ham kayıt, `duzeltme` ve `puantaj_satiri` değiştirilemez ve silinemez · `gun_kaydi` yalnızca `pdks.duzeltme_uygula()` ile değişir · devamsızlık ve itiraz reddi yalnızca İK · kilitli ay açılamaz · kimse kendi kaydında işlem yapamaz (görevler ayrılığı) · her kullanıcı yalnızca rolünün izin verdiği satırları görür (RLS).
 
@@ -109,6 +112,20 @@ Next.js uygulaması eklendiğinde planlanan yapı:
 | `20261118010000_sema_temizligi.sql` | Tablo açıklamaları ve ayar geçmişi düzenlemesi |
 | `20261118020000_gorevler_ayriligi.sql` | Kullanıcı ↔ çalışan bağı, "kimse kendi kaydında işlem yapamaz" kuralları |
 | `20261118030000_giris_ve_yetki.sql` | Supabase Auth bağlantısı, RLS politikaları, görünüm yetkileri |
+| `20261118040000_ayar_al_yetkisi.sql` | `ayar_al()` sahibinin yetkisiyle çalışır, `authenticated` çalıştırabilir |
+| `20261119010000_ekran_fonksiyonlari.sql` | Ekranların çağırdığı 22 RPC fonksiyonu (amir, güvenlik, İK) |
+| `20261120010000_gece_isi.sql` | Gece işi, demo düğmesi, pg_cron zamanlaması |
+| `20261121010000_puantaj.sql` | Ay kilidinde puantaj (`normal` + `fark` satırları) |
+| `20261122010000_izin_iptal_ve_departman_ozeti.sql` | İzin iptali, yönetici paneli için departman özeti |
+| `20261123010000_puantaj_kurallari.sql` | Tolerans 10/5 dk ve yuvarlama, onaysız fazla mesai havuzu, FM50 / FM100, gece çalışması, saatlik izin, puantaj kodları |
+| `20261124010000_vardiya_kurallari.sql` | Yeni vardiyalar, esnek mesai, otomatik vardiya tanıma, mola (m.68) |
+| `20261125010000_organizasyon_ve_roller.sql` | Mavi / beyaz yaka, `isg` ve `admin` rolleri, kullanıcı ve ayar yönetimi (admin) |
+| `20261126010000_isg.sql` | Bölge yetkisi, İSG eğitimi / sağlık muayenesi geçerlilik tarihleri ve uyarıları (kapı kilitlenmez) |
+| `20261127010000_bolge_yetkisi_izi.sql` | Bölge yetkisinin verilme / kaldırılma izi |
+| `20261127020000_erp_aktarim.sql` | ERP aktarımı: kilitli ayın puantaj kodları (`v_puantaj_aktarim`) |
+| `20261128010000_dosya_yukle_duzeltmesi.sql` | `dosya_yukle`: dosyanın SHA-256 özeti, doğru satır sayısı, satır satır sunucu denetimi |
+| `20261129010000_esnek_kanit.sql` | Esnek mesaide PDKS girişi eksikse kanıt saati (kapı / servis + yürüme payı) doğrudan yazılır |
+| `20261129020000_zimmet_cakisma_mesaji.sql` | Geçici kart zimmeti çakışınca hata, çakışan zimmeti söyler (kart, kişi, tarih, saat) |
 
 ---
 
@@ -161,20 +178,28 @@ Vercel'de ilk üç değişken **Project Settings → Environment Variables** bö
 | Fazla mesai (34 test) | ✅ |
 | Geçici kart ve zimmet (35 test, kart paylaşımıyla birlikte) | ✅ |
 | Kart paylaşımı şüphe kuralı (testli) | ✅ |
-| Giriş ve yetki: Supabase Auth bağlantısı, RLS politikaları (24 test) | ✅ |
+| Giriş ve yetki: Supabase Auth bağlantısı, RLS politikaları (29 test) | ✅ |
 | Görevler ayrılığı: kimse kendi kaydında işlem yapamaz (20 test) | ✅ |
-| Ekran fonksiyonları (RPC): soru cevaplama, itiraz, geçici kart, İK kararları | ⬜ Yapılacak |
-| Next.js iskeleti (TypeScript, Tailwind CSS, shadcn/ui, supabase-js) | ⬜ Yapılacak |
-| Fiili fazla mesai uyarıları (günlük 11 / yıllık 270 saat, gerçekleşen) | ⬜ Yapılacak |
-| Plansız fazla mesainin İK kararına kadar "incelemede" kalması | ⬜ Yapılacak |
-| Saatlik izin | ⬜ Yapılacak |
-| Örnek veri: Kasım 2026, 31 çalışan, 23 senaryo (37 test) | ✅ |
-| CSV içe aktarma (Papa Parse) | ⬜ Yapılacak |
-| Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ⬜ Yapılacak |
+| Ekran fonksiyonları (RPC): soru cevaplama, itiraz, geçici kart, İK kararları, dosya yükleme (42 test) | ✅ |
+| Next.js iskeleti (TypeScript, Tailwind CSS, shadcn/ui, supabase-js) | ✅ |
+| Fiili fazla mesai uyarıları: günlük 11 saat (gece işi), yıllık 270 saat (havuz onayında) | ✅ |
+| Onaysız fazla mesai havuzu: plansız çalışma İK kararına kadar puantaja girmez | ✅ |
+| Saatlik izin (vizite dahil) | ✅ |
+| Tolerans 10 / 5 dk ve yuvarlama ayarı | ✅ |
+| FM50 / FM100, gece çalışması (m.69), puantaj kodları ve kalemleri (68 test) | ✅ |
+| Yeni vardiyalar (08-16, 16-24, 00-08, 08:30-18:00), esnek mesai, otomatik vardiya tanıma, mola (28 test) | ✅ |
+| Esnek mesaide PDKS girişi eksikse amire soru yerine kanıt saatini (kapı / servis + yürüme payı) doğrudan yazmak | ✅ |
+| Geçici kart zimmeti çakışma hatasında çakışan zimmeti göstermek | ✅ |
+| Örnek veri: Kasım 2026, 19 departman, 76 çalışan, 23 senaryo (37 test) | ✅ |
+| Mavi / beyaz yaka, İSG uzmanı ve sistem yöneticisi rolleri, kullanıcı ve ayar yönetimi (35 test) | ✅ |
+| İSG: bölge yetkisi (verilme / kaldırılma izi dahil), eğitim / muayene geçerliliği, yalnızca uyarı (30 test) | ✅ |
+| CSV içe aktarma (Papa Parse): ekranda denetim ve Yükle düğmesi `dosya_yukle`'ye bağlı (24 test) | ✅ |
+| Gece işi fonksiyonu (işaretleme → günlük kayıt → kanıtla düzeltme → amire soru → uyarı) ve pg_cron zamanlaması | ✅ |
 | Amir ekranı (sorular, itiraz girişi) | ⬜ Yapılacak |
 | İK ekranı (uyarılar, kararlar, ay kilidi) | ⬜ Yapılacak |
 | Güvenlik ekranı (geçici kart ver / iade al) | ⬜ Yapılacak |
-| Bordro Excel çıktısı (SheetJS), çalışan PDF dökümü (@react-pdf/renderer) | ⬜ Yapılacak |
+| Bordro Excel çıktısı (SheetJS; FM50 / FM100 / gece / mola sütunları ve kilitli ayda "Puantaj kodları" sayfası), çalışan PDF dökümü (@react-pdf/renderer) | ✅ |
+| ERP aktarımı: kilitli ayın puantaj icmali CSV ve XML (sicil, dönem, kod, gün, dakika; 9 test) | ✅ |
 | Vercel'de yayın | ⬜ Yapılacak |
 | Raporlama (Power BI veya Streamlit) | ⬜ Karar bekliyor |
 | Rapor diyagramları (Use Case, DFD, AS-IS, TO-BE) | ⬜ Yapılacak |

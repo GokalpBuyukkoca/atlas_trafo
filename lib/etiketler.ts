@@ -43,6 +43,12 @@ export const UYARI_TURU: Record<string, string> = {
   gecici_kart_zimmetsiz: "Zimmetsiz geçici kart okutuldu",
   gecici_kart_iade_edilmedi: "Geçici kart iade edilmedi",
   kart_paylasim_suphesi: "Kart paylaşımı şüphesi",
+  gece_calisma_siniri_asildi: "Gece çalışma sınırı aşıldı",
+  fm_yillik_sinir_asildi: "Yıllık fazla mesai sınırı aşıldı",
+  isg_belgesi_yok: "İSG belgesi kaydı yok",
+  isg_belgesi_suresi_dolmus: "İSG belgesinin süresi dolmuş",
+  isg_belgesi_suresi_doluyor: "İSG belgesinin süresi doluyor",
+  yetkisiz_bolge_okutmasi: "Yetkisiz bölgeye giriş",
 };
 
 export const ITIRAZ_DURUMU: Record<string, { ad: string; tur: "default" | "secondary" | "destructive" | "outline" }> = {
